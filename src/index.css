@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+:root {
+  /* Premium LinkedIn-inspired Slate & Blue Theme */
+  --bg-main: #f3f2ef;
+  --bg-card: #ffffff;
+  --text-main: #191919;
+  --text-muted: #5e5e5e;
+  --brand-primary: #0a66c2;
+  --brand-hover: #004182;
+  --border-light: #e0e0e0;
+  
+  /* Custom Accent tokens matching your setup */
+  --accent: #0a66c2;
+  --shadow-sm: 0 0 0 1px rgb(0 0 0 / 8%), 0 2px 4px rgb(0 0 0 / 8%);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth form transition layers */
+input, select {
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
