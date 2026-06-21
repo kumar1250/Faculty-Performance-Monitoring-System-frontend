@@ -6,8 +6,9 @@ import AppShell from './components/Layout/AppShell';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
+import Account from './pages/Account';
 import ApprovalRequests from './pages/ApprovalRequests';
-import FacultyDashboardPage from './pages/FacultyDashboardPage';
+import Leaderboard from './pages/Leaderboard';
 
 export default function App() {
   return (
@@ -18,14 +19,16 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<Forgot />} />
 
-        {/* Private Routes: Wrapped in ProtectedRoute and using AppShell as Layout */}
+        {/* Private Shell Layout Protected Routes */}
         <Route path="/" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+          {/* Explicitly land on the live dashboard panel */}
           <Route index element={<Dashboard />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profile" element={<Profile />} />
           <Route path="profile/:registerNo" element={<Profile />} />
+          <Route path="account" element={<Account />} />
           <Route path="requests" element={<ApprovalRequests />} />
-          <Route path="faculty-summary/:registerNo" element={<FacultyDashboardPage />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
         </Route>
 
         {/* Global Fallback Route */}

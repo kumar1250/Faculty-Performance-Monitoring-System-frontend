@@ -34,39 +34,30 @@ export default function StudentCounsellingModule({ records = [], isReadOnly, cur
     e.preventDefault();
     setLoading(true);
 
+    // The backend serializer expects 'total_students' and 'faculty'
     const payload = {
-      total_students: parseInt(formData.total_students, 10)
+      total_students: parseInt(formData.total_students, 10),
+      // Use 'faculty' as the key to match serializers.py
+      faculty: currentUserId 
     };
     
-    // Strict Backend Requirement: This specific module targets the 'faculty' key name instead of 'user'
-    if (editingId) {
-      const record = records.find(r => r.id === editingId);
-      payload.faculty = record.faculty; 
-    } else {
-      if (records.length > 0 && records[0].faculty) {
-        payload.faculty = records[0].faculty;
-      } else if (currentUserId) {
-        payload.faculty = currentUserId;
-      }
-    }
-
     try {
       if (editingId) {
-        // Hits PUT /counselling/counselling/<id>/update
-        await API.put(`/counselling/counselling/${editingId}/update`, payload);
+        // Backend update logic handles 'faculty'
+        await API.put(`/counselling/counselling/${editingId}/update/`, payload);
       } else {
-        // Hits POST /counselling/counselling/contribution/[cite: 26, 27]
+        // This hits the contribution/ endpoint
         await API.post('/counselling/counselling/contribution/', payload);
       }
       setIsOpen(false);
       onRefresh();
     } catch (err) {
-      alert(err.response?.data ? JSON.stringify(err.response.data) : 'Operation failed.');
+      console.error("Submission failed:", err.response?.data);
+      alert('Operation failed. Check console.');
     } finally {
       setLoading(false);
     }
   };
-
   const handleDelete = async (e, id) => {
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to remove this counselling entry?')) return;

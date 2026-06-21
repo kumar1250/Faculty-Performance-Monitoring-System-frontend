@@ -28,6 +28,74 @@ function getMeta(label) {
   return MODULE_META[label] || { icon: '📌', color: '#3b82f6', bg: '#eff6ff' };
 }
 
+// ─── Deterministic Avatar (no backend profile photo exists, so we derive a
+// stable, per-person colored avatar from their name/register_no instead of
+// random gradients — same person looks the same everywhere in the app) ──────
+const AVATAR_PALETTE = [
+  ['#6366f1', '#4f46e5'], // indigo
+  ['#10b981', '#059669'], // emerald
+  ['#f59e0b', '#d97706'], // amber
+  ['#ef4444', '#dc2626'], // red
+  ['#0ea5e9', '#0284c7'], // sky
+  ['#8b5cf6', '#7c3aed'], // violet
+  ['#ec4899', '#db2777'], // pink
+  ['#14b8a6', '#0d9488'], // teal
+  ['#f97316', '#ea580c'], // orange
+  ['#84cc16', '#65a30d'], // lime
+];
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0; // 32-bit int
+  }
+  return Math.abs(hash);
+}
+
+function getAvatarColors(seed) {
+  const idx = hashString(seed || '?') % AVATAR_PALETTE.length;
+  return AVATAR_PALETTE[idx];
+}
+
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// seed should be something stable & unique per person — register_no is ideal,
+// falls back to username if register_no isn't available.
+// photoUrl: presigned S3 URL from the backend's profile_image_url field.
+// It's optional — most users won't have uploaded a photo yet, so we always
+// fall back to the deterministic initials avatar (incl. if the image 404s,
+// since presigned URLs expire after an hour and can go stale mid-session).
+function Avatar({ name, seed, photoUrl, size = 'w-8 h-8', textSize = 'text-xs' }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const [from, to] = getAvatarColors(seed || name || '?');
+
+  if (photoUrl && !imgFailed) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name || 'Profile'}
+        onError={() => setImgFailed(true)}
+        className={`${size} rounded-full object-cover flex-shrink-0 bg-slate-100`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${size} rounded-full flex items-center justify-center text-white ${textSize} font-black flex-shrink-0`}
+      style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}
+    >
+      {getInitials(name)}
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function Pill({ count, type }) {
   const s = {
@@ -288,13 +356,17 @@ function FacultyDashboardModal({ data, onClose }) {
           <div className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 px-6 py-5 text-white">
             <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/5 rounded-full pointer-events-none" />
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-0.5">Faculty Performance Dashboard</p>
-                <h2 className="text-2xl font-black capitalize">{data.username}</h2>
-                <div className="flex flex-wrap gap-3 mt-1.5 text-sm text-blue-100">
-                  <span>🆔 {data.register_no}</span>
-                  <span>✉️ {data.email}</span>
-                  <span>🏷️ {data.role?.replace(/_/g, ' ').toUpperCase()}</span>
+              <div className="flex items-start gap-3">
+                <Avatar name={data.username} seed={data.register_no} photoUrl={data.profile_image_url}
+                  size="w-14 h-14 mt-0.5" textSize="text-lg" />
+                <div>
+                  <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-0.5">Faculty Performance Dashboard</p>
+                  <h2 className="text-2xl font-black capitalize">{data.username}</h2>
+                  <div className="flex flex-wrap gap-3 mt-1.5 text-sm text-blue-100">
+                    <span>🆔 {data.register_no}</span>
+                    <span>✉️ {data.email}</span>
+                    <span>🏷️ {data.role?.replace(/_/g, ' ').toUpperCase()}</span>
+                  </div>
                 </div>
               </div>
               <button onClick={onClose}
@@ -613,9 +685,8 @@ function RankingsPanel({ isPrivileged }) {
                       <span className="w-7 text-center text-sm font-black text-slate-400 flex-shrink-0">
                         {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
                       </span>
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0">
-                        {(row.username?.[0] || '?').toUpperCase()}
-                      </div>
+                      <Avatar name={row.username} seed={row.register_no} photoUrl={row.profile_image_url}
+                        size="w-7 h-7" textSize="text-[10px]" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold text-slate-800 capitalize truncate group-hover:text-amber-800 transition">{row.username}</p>
                         <p className="text-[10px] font-semibold text-slate-400">{row.register_no} · <span className="uppercase">{row.role?.replace(/_/g, ' ')}</span></p>
@@ -633,6 +704,7 @@ function RankingsPanel({ isPrivileged }) {
   );
 }
 
+// ─── Navbar Search Bar ────────────────────────────────────────────────────────
 function FacultySearch({ isPrivileged }) {
   const [query, setQuery]           = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -693,8 +765,7 @@ function FacultySearch({ isPrivileged }) {
       setLoadingDash(false);
     }
   };
-  
-  if (!isPrivileged) return null;
+
   return (
     <>
       {/* Loading overlay */}
@@ -750,9 +821,7 @@ function FacultySearch({ isPrivileged }) {
                 <button key={user.user_id}
                   onClick={() => openDashboard(user.register_no)}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition text-left group">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
-                    {(user.username?.[0] || '?').toUpperCase()}
-                  </div>
+                  <Avatar name={user.username} seed={user.register_no} photoUrl={user.profile_image_url} size="w-8 h-8" textSize="text-xs" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{user.username}</p>
                     <p className="text-[10px] font-semibold text-slate-400">{user.register_no} · <span className="uppercase">{user.role?.replace(/_/g, ' ')}</span></p>
@@ -776,6 +845,7 @@ export default function AppShell() {
   const location  = useLocation();
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [myPhotoUrl, setMyPhotoUrl] = useState(null);
 
   useEffect(() => {
     async function fetchUser() {
@@ -791,6 +861,19 @@ export default function AppShell() {
     }
     fetchUser();
   }, [navigate]);
+
+  // Separate, non-blocking fetch for the navbar avatar photo. Kept apart from
+  // fetchUser() above so a profile-photo hiccup (still uploading, S3 issue,
+  // no profile row yet) never trips the catch-and-logout path that guards
+  // session validity.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    API.get('/accounts/profiles/me/')
+      .then(res => { if (!cancelled) setMyPhotoUrl(res.data?.profile_image_url || null); })
+      .catch(() => { if (!cancelled) setMyPhotoUrl(null); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const handleSignOut = () => { localStorage.clear(); navigate('/login'); };
 
@@ -840,6 +923,15 @@ export default function AppShell() {
             <nav className="flex items-center gap-1">
               {navLink('/dashboard', 'Dashboard', true)}
               {navLink('/profile', 'My Profile')}
+              <Link to="/leaderboard"
+                className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${
+                  location.pathname === '/leaderboard'
+                    ? 'bg-amber-50 text-amber-800'
+                    : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
+                }`}>
+                🏆 Leaderboard
+              </Link>
+
               {isHOD && (
                 <Link to="/requests"
                   className={`px-3 py-2 rounded-xl text-sm font-bold transition-all border flex items-center gap-1.5 ${
@@ -853,10 +945,9 @@ export default function AppShell() {
               )}
             </nav>
 
-            
           </div>
 
-          {/* Center: Search (privileged only) */}
+          {/* Center: Search */}
           <div className="flex-1 flex justify-center max-w-xs">
             <FacultySearch isPrivileged={isPrivileged} />
           </div>
@@ -869,9 +960,10 @@ export default function AppShell() {
                 {user?.role?.replace(/_/g, ' ')}
               </p>
             </div>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black hidden sm:flex">
-              {(user?.username?.[0] || 'F').toUpperCase()}
-            </div>
+            <Link to="/account"
+              className="hidden sm:flex hover:ring-2 hover:ring-blue-300 rounded-full transition flex-shrink-0">
+              <Avatar name={user?.username || 'Faculty'} seed={user?.register_no} photoUrl={myPhotoUrl} size="w-8 h-8" textSize="text-xs" />
+            </Link>
             <button onClick={handleSignOut}
               className="text-xs font-bold bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 px-3 py-2 rounded-xl border border-slate-200 hover:border-red-100 transition-all active:scale-[0.98]">
               Sign Out

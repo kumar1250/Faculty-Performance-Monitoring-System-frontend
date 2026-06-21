@@ -1,6 +1,40 @@
 import { useEffect, useState } from 'react';
 import API from '../api/axios';
 
+// Bookkeeping / internal fields we never want to show as "submitted data" —
+// everything else on a record gets rendered generically below.
+const SKIP_FIELDS = new Set([
+  'id', 'itemType', 'user', 'faculty',
+  'approval_status', 'approved_by', 'points',
+  'certificate_file', 'message', 'remarks',
+  'created_at', 'updated_at', 'issue_date', 'update_date',
+  'created_date', 'updated_date',
+  'user_name', 'user_register_no',
+]);
+
+function humanizeLabel(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// Many choice fields store codes like "gt_10" or "FIRST_AUTHOR" — make them
+// at least readable without needing every choice-map duplicated here.
+function humanizeValue(val) {
+  if (typeof val !== 'string') return val;
+  if (/^[A-Z0-9_]+$/.test(val) || val.includes('_')) {
+    return val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+  return val;
+}
+
+function formatDetailValue(key, val) {
+  if (val === null || val === undefined || val === '') return null; // don't render empty fields
+  if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  if (/amount$/i.test(key) && !isNaN(parseFloat(val))) {
+    return `₹${parseFloat(val).toLocaleString()}`;
+  }
+  return humanizeValue(val);
+}
+
 export default function ApprovalRequests() {
   const [requests, setRequests] = useState([]); 
   const [loading, setLoading] = useState(true);
@@ -10,6 +44,31 @@ export default function ApprovalRequests() {
   const [activeModuleType, setActiveModuleType] = useState(''); 
   const [secureFileUrl, setSecureFileUrl] = useState(null);
   const [fetchingFile, setFetchingFile] = useState(false);
+  const [requesterProfiles, setRequesterProfiles] = useState({}); // register_no -> profile data
+
+  // Fetches each distinct requester's profile (avatar/headline/department)
+  // exactly once, even though the same person can appear across many
+  // modules/requests. Failures are per-requester and silent — a missing
+  // profile for one person shouldn't affect anyone else's card.
+  const loadRequesterProfiles = async (requestList) => {
+    const registerNos = [...new Set(
+      requestList.map(r => r.user_register_no || r.user?.register_no || r.faculty?.register_no).filter(Boolean)
+    )];
+
+    const results = await Promise.all(
+      registerNos.map(regNo =>
+        API.get(`/accounts/profiles/by-register/${regNo}/`)
+          .then(res => [regNo, res.data])
+          .catch(() => [regNo, null])
+      )
+    );
+
+    setRequesterProfiles(prev => {
+      const next = { ...prev };
+      results.forEach(([regNo, data]) => { next[regNo] = data; });
+      return next;
+    });
+  };
 
   const loadPendingRequests = async () => {
     setLoading(true);
@@ -40,6 +99,7 @@ export default function ApprovalRequests() {
       );
 
       setRequests(normalized);
+      loadRequesterProfiles(normalized);
     } catch (err) {
       console.error('Failed to retrieve validation queues:', err);
     } finally {
@@ -47,7 +107,9 @@ export default function ApprovalRequests() {
     }
   };
 
-  useEffect(() => { loadPendingRequests(); }, []);
+  useEffect(() => {
+    loadPendingRequests();
+  }, []);
 
   const handleInspectFile = async (id, type) => {
     setActiveFileRecordId(id);
@@ -139,9 +201,18 @@ export default function ApprovalRequests() {
           {requests.map((req) => {
             const reqUid = `${req.itemType}-${req.id}`;
             
-            const titleText = req.book_title || req.title || req.project_title || req.publication_title || req.subject_name || req.organization_name || req.event_name || req.Course_name || "Appraisal Submission Log";
-            const facultyName = req.user_name || req.user?.username || "Faculty Member";
-            const facultyReg = req.user_register_no || req.user?.register_no || "N/A";
+            const titleText = req.book_title || req.title || req.project_title || req.publication_title || req.subject_name || req.organization_name || req.event_name || req.scholar_name || req.Course_name || "Appraisal Submission Log";
+            const facultyName = req.user_name || req.user?.username || req.faculty?.username || "Faculty Member";
+            const facultyReg = req.user_register_no || req.user?.register_no || req.faculty?.register_no || "N/A";
+            const requesterProfile = requesterProfiles[facultyReg];
+
+            // Every field actually present on this record, minus bookkeeping
+            // fields — so each module's real submitted data shows up without
+            // needing a hardcoded field list per module.
+            const detailEntries = Object.entries(req)
+              .filter(([key]) => !SKIP_FIELDS.has(key))
+              .map(([key, val]) => [key, formatDetailValue(key, val)])
+              .filter(([, val]) => val !== null);
 
             return (
               <div key={reqUid} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between gap-6 hover:border-slate-300 transition-colors">
@@ -151,21 +222,43 @@ export default function ApprovalRequests() {
                       {req.itemType?.replace('_', ' ')}
                     </span>
                     <h4 className="text-lg font-bold text-slate-900 mt-2">{titleText}</h4>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Submitted By: <span className="text-blue-600 font-bold">{facultyName}</span> ({facultyReg})
-                    </p>
+
+                    {/* Requester profile: avatar, name, headline, department */}
+                    <div className="flex items-center gap-2.5 mt-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black overflow-hidden flex-shrink-0">
+                        {requesterProfile?.profile_image_url ? (
+                          <img src={requesterProfile.profile_image_url} alt={facultyName}
+                            className="w-full h-full object-cover" />
+                        ) : (
+                          (facultyName?.[0] || '?').toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-500 font-medium">
+                          Submitted By: <span className="text-blue-600 font-bold">{facultyName}</span> ({facultyReg})
+                        </p>
+                        {(requesterProfile?.headline || requesterProfile?.department) && (
+                          <p className="text-[11px] text-slate-400 font-semibold truncate">
+                            {requesterProfile?.headline}
+                            {requesterProfile?.headline && requesterProfile?.department && ' · '}
+                            {requesterProfile?.department && `🏛️ ${requesterProfile.department}`}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50/60 border border-slate-100 p-3 rounded-xl text-xs text-slate-600">
-                    {req.organization_name && <div>Organization: <strong>{req.organization_name}</strong></div>}
-                    {req.publisher_name && <div>Publisher: <strong>{req.publisher_name}</strong></div>}
-                    {req.journal_name && <div>Journal: <strong>{req.journal_name}</strong></div>}
-                    {req.grant_amount && <div>Grant Amount: <strong>₹{parseFloat(req.grant_amount).toLocaleString()}</strong></div>}
-                    {req.amount && <div>Amount: <strong>₹{parseFloat(req.amount).toLocaleString()}</strong></div>}
-                    {req.total_students && <div>Students Target: <strong>{req.total_students} Candidates</strong></div>}
-                    {req.publication_type && <div className="uppercase">Indexing Track: <strong>{req.publication_type}</strong></div>}
-                    {req.patent_number && <div>Patent ID: <strong className="font-mono">{req.patent_number}</strong></div>}
-                  </div>
+                  {/* Submitted data — generic, covers every module's actual fields */}
+                  {detailEntries.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50/60 border border-slate-100 p-3 rounded-xl text-xs text-slate-600">
+                      {detailEntries.map(([key, val]) => (
+                        <div key={key} className="min-w-0">
+                          <span className="text-slate-400">{humanizeLabel(key)}:</span>{' '}
+                          <strong className="text-slate-800">{String(val)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="pt-1">
                     {activeFileRecordId === req.id && activeModuleType === req.itemType ? (

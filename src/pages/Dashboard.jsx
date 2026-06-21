@@ -391,6 +391,7 @@ function LeaderboardPanel({ myId, isPrivileged }) {
 export default function Dashboard() {
   const [data, setData]           = useState(null);   // full dashboard response
   const [user, setUser]           = useState(null);
+  const [profile, setProfile]     = useState(null);   // /accounts/profiles/me/ response
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
   const [detailModule, setDetail] = useState(null);
@@ -403,6 +404,13 @@ export default function Dashboard() {
         const userRes = await API.get('/accounts/user/details/');
         setUser(userRes.data);
         const registerNo = userRes.data?.register_no;
+
+        // Profile (avatar, headline, bio, department, experience) is fetched
+        // separately and is allowed to fail silently — the dashboard's core
+        // stats shouldn't be blocked by a missing/incomplete profile.
+        API.get('/accounts/profiles/me/')
+          .then(res => setProfile(res.data))
+          .catch(() => setProfile(null));
 
         // /dashboard/ now returns module breakdown + rank for any authenticated
         // user requesting their own register_no (privileged roles can also pass
@@ -491,14 +499,42 @@ export default function Dashboard() {
           <div className="absolute -bottom-14 -left-8 w-72 h-72 bg-white/5 rounded-full pointer-events-none" />
 
           <div className="relative flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-            <div>
-              <p className="text-blue-200 text-sm font-medium">{greeting},</p>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight capitalize mt-0.5">{firstName} 👋</h1>
-              <p className="text-blue-200 text-sm mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-                {user?.role && <span>🏷️ {user.role.replace(/_/g, ' ').toUpperCase()}</span>}
-                {user?.register_no && <span>🆔 {user.register_no}</span>}
-                {user?.email && <span>✉️ {user.email}</span>}
-              </p>
+            <div className="flex items-start gap-4">
+              {/* Avatar */}
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center text-white text-2xl font-black overflow-hidden flex-shrink-0">
+                {profile?.profile_image_url ? (
+                  <img src={profile.profile_image_url} alt={user?.username || 'Profile'}
+                    className="w-full h-full object-cover" />
+                ) : (
+                  (firstName?.[0] || '?').toUpperCase()
+                )}
+              </div>
+
+              <div>
+                <p className="text-blue-200 text-sm font-medium">{greeting},</p>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight capitalize mt-0.5">{firstName} 👋</h1>
+                <p className="text-blue-200 text-sm mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                  {user?.role && <span>🏷️ {user.role.replace(/_/g, ' ').toUpperCase()}</span>}
+                  {user?.register_no && <span>🆔 {user.register_no}</span>}
+                  {user?.email && <span>✉️ {user.email}</span>}
+                </p>
+
+                {/* Profile details: headline, department, experience, bio */}
+                {profile?.headline && (
+                  <p className="text-white text-sm font-bold mt-2">{profile.headline}</p>
+                )}
+                {(profile?.department || profile?.experience_years) && (
+                  <p className="text-blue-200 text-xs font-semibold mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {profile?.department && <span>🏛️ {profile.department}</span>}
+                    {profile?.experience_years ? (
+                      <span>📅 {profile.experience_years} {profile.experience_years === 1 ? 'year' : 'years'} experience</span>
+                    ) : null}
+                  </p>
+                )}
+                {profile?.bio && (
+                  <p className="text-blue-100/80 text-xs mt-2 max-w-md leading-relaxed">{profile.bio}</p>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-start gap-3">

@@ -24,6 +24,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [currentRegisterNo, setCurrentRegisterNo] = useState('');
   const [currentUserId, setCurrentUserId] = useState(''); 
+  const [profile, setProfile] = useState(null); // avatar, headline, bio, department, experience
   
   const [books, setBooks] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -45,14 +46,28 @@ export default function Profile() {
   const loadProfileData = useCallback(async () => {
     try {
       let targetNo = registerNo;
+      let targetUserId = null;
       if (!targetNo) {
         const detailRes = await API.get('/accounts/user/details/');
         targetNo = detailRes.data.register_no;
+        targetUserId = detailRes.data.id;
         setCurrentRegisterNo(targetNo);
-        setCurrentUserId(detailRes.data.id); 
+        setCurrentUserId(targetUserId);
       } else {
         setCurrentRegisterNo(targetNo);
       }
+
+      // Profile header (avatar/headline/bio/department/experience) is fetched
+      // separately and allowed to fail silently so a missing profile never
+      // blocks the rest of the portfolio from loading.
+      // - own portfolio  -> /accounts/profiles/me/
+      // - someone else's -> /accounts/profiles/by-register/<registerNo>/
+      const profileUrl = isReadOnly
+        ? `/accounts/profiles/by-register/${targetNo}/`
+        : '/accounts/profiles/me/';
+      API.get(profileUrl)
+        .then(res => setProfile(res.data))
+        .catch(() => setProfile(null));
 
       // Final Path Alignment with Django Routers (Removing trailing slashes to match regex)
       const [
@@ -113,6 +128,46 @@ export default function Profile() {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
         <h2 className="text-xl font-black text-slate-900">{isReadOnly ? `Portfolio: ${registerNo}` : 'My Portfolio'}</h2>
       </div>
+
+      {/* Profile header: avatar, headline, department, experience, bio */}
+      {profile && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] flex flex-col sm:flex-row gap-5 sm:items-start">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-black overflow-hidden flex-shrink-0">
+            {profile.profile_image_url ? (
+              <img src={profile.profile_image_url} alt={profile.username?.username || 'Profile'}
+                className="w-full h-full object-cover" />
+            ) : (
+              (profile.username?.username?.[0] || currentRegisterNo?.[0] || '?').toUpperCase()
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {profile.username?.username && (
+              <p className="text-lg font-black text-slate-900 capitalize">{profile.username.username}</p>
+            )}
+            {profile.headline && (
+              <p className="text-sm font-bold text-slate-700 mt-0.5">{profile.headline}</p>
+            )}
+            {(profile.department || profile.experience_years) && (
+              <p className="text-xs font-semibold text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                {profile.department && <span>🏛️ {profile.department}</span>}
+                {profile.experience_years ? (
+                  <span>📅 {profile.experience_years} {profile.experience_years === 1 ? 'year' : 'years'} experience</span>
+                ) : null}
+              </p>
+            )}
+            {profile.bio && (
+              <p className="text-sm text-slate-600 mt-3 leading-relaxed whitespace-pre-wrap">{profile.bio}</p>
+            )}
+            {!profile.headline && !profile.bio && !profile.department && !profile.experience_years && (
+              <p className="text-sm text-slate-400 italic mt-1">
+                {isReadOnly ? 'No profile details added yet.' : "You haven't added profile details yet — head to My Account to fill them in."}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <BookPublications records={books} isReadOnly={isReadOnly} currentRegisterNo={currentRegisterNo} onRefresh={loadProfileData} />
       <StudentProjectModule records={studentProjects} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
       <StudentFeedbackModule records={feedbacks} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
