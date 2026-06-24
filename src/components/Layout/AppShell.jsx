@@ -125,7 +125,7 @@ function getExtension(url) {
   return (last || '').toLowerCase();
 }
 
-// ─── Secure File Preview Component ──────────────────────────────────────────
+// ─── Secure File Preview Component ───────────────────────────────────────────
 function SecureFilePreview({ moduleLabel, recordId, rawUrl }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -219,7 +219,8 @@ function ModuleDrawer({ module, registerNo, onClose }) {
             <div>
               <h2 className="text-lg font-black text-slate-900">{module.module}</h2>
               <p className="text-xs text-slate-500 font-semibold">
-                {module.total} submitted · {module.approved} approved · {module.pending} pending · {module.rejected} rejected · <span className="font-black" style={{ color: meta.color }}>{module.points} pts</span>
+                {module.total} submitted · {module.approved} approved · {module.pending} pending · {module.rejected} rejected ·{' '}
+                <span className="font-black" style={{ color: meta.color }}>{module.points} pts</span>
               </p>
             </div>
           </div>
@@ -289,19 +290,19 @@ function ModuleDrawer({ module, registerNo, onClose }) {
   );
 }
 
-// ─── Faculty Dashboard Modal Component ──────────────────────────────────────────
+// ─── Faculty Dashboard Modal Component ───────────────────────────────────────
 function FacultyDashboardModal({ data, onClose }) {
   const [activeModule, setActiveModule] = useState(null);
 
   if (!data) return null;
 
-  const modules = data.modules || [];
-  const totalPoints = data.total_points ?? 0;
+  const modules        = data.modules || [];
+  const totalPoints    = data.total_points ?? 0;
   const totalApproved  = modules.reduce((s, m) => s + (m.approved ?? 0), 0);
   const totalPending   = modules.reduce((s, m) => s + (m.pending ?? 0), 0);
   const totalRejected  = modules.reduce((s, m) => s + (m.rejected ?? 0), 0);
   const totalSubmitted = modules.reduce((s, m) => s + (m.total ?? 0), 0);
-  const maxPts = Math.max(...modules.map(m => m.points ?? 0), 1);
+  const maxPts         = Math.max(...modules.map(m => m.points ?? 0), 1);
 
   return (
     <>
@@ -311,6 +312,8 @@ function FacultyDashboardModal({ data, onClose }) {
 
       <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm p-3 overflow-y-auto" onClick={onClose}>
         <div className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-5xl my-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+
+          {/* Header */}
           <div className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 px-6 py-5 text-white">
             <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/5 rounded-full pointer-events-none" />
             <div className="flex items-start justify-between gap-4">
@@ -361,6 +364,7 @@ function FacultyDashboardModal({ data, onClose }) {
             </div>
           </div>
 
+          {/* Summary row */}
           <div className="grid grid-cols-4 divide-x divide-slate-200 border-b border-slate-200 bg-white">
             {[
               { l: 'Submitted', v: totalSubmitted, c: '#3b82f6' },
@@ -375,6 +379,7 @@ function FacultyDashboardModal({ data, onClose }) {
             ))}
           </div>
 
+          {/* Module table */}
           <div className="p-5 max-h-[55vh] overflow-y-auto">
             <h3 className="text-sm font-black text-slate-700 mb-3 flex items-center gap-2">
               📋 All Activity Modules
@@ -397,9 +402,9 @@ function FacultyDashboardModal({ data, onClose }) {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {modules.map((m, idx) => {
-                    const meta = getMeta(m.module);
+                    const meta    = getMeta(m.module);
                     const hasData = (m.total ?? 0) > 0;
-                    const pct = maxPts > 0 ? Math.min(100, ((m.points ?? 0) / maxPts) * 100) : 0;
+                    const pct     = maxPts > 0 ? Math.min(100, ((m.points ?? 0) / maxPts) * 100) : 0;
                     return (
                       <tr key={m.module} className={`hover:bg-blue-50/30 transition-colors ${!hasData ? 'opacity-40' : ''}`}>
                         <td className="px-4 py-3 text-xs font-bold text-slate-300">{idx + 1}</td>
@@ -426,7 +431,9 @@ function FacultyDashboardModal({ data, onClose }) {
                             onClick={() => hasData && setActiveModule(m)}
                             disabled={!hasData}
                             className={`inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-xl border transition-all
-                              ${hasData ? 'bg-white hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-slate-600 border-slate-200 shadow-sm' : 'text-slate-200 border-slate-100 cursor-default'}`}>
+                              ${hasData
+                                ? 'bg-white hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-slate-600 border-slate-200 shadow-sm'
+                                : 'text-slate-200 border-slate-100 cursor-default'}`}>
                             🔍 View Details
                           </button>
                         </td>
@@ -454,9 +461,7 @@ function FacultyDashboardModal({ data, onClose }) {
   );
 }
 
-// ─── Rankings Panel Component ───────────────────────────────────────────────
-// Re-rank dense-style (ties share a rank) after department scoping removes
-// rows — otherwise an HOD would see gappy ranks like #1, #4, #7...
+// ─── Rankings Panel Component ─────────────────────────────────────────────────
 function rerankBoard(rows) {
   let rank = 0;
   let lastPoints = null;
@@ -470,19 +475,19 @@ function rerankBoard(rows) {
 }
 
 function RankingsPanel({ user }) {
-  const [open, setOpen]             = useState(false);
-  const [board, setBoard]           = useState([]);
+  const [open, setOpen]               = useState(false);
+  const [board, setBoard]             = useState([]);
   const [loadingBoard, setLoadingBoard] = useState(false);
-  const [loadedOnce, setLoadedOnce] = useState(false);
-  const [boardError, setBoardError] = useState('');
+  const [loadedOnce, setLoadedOnce]   = useState(false);
+  const [boardError, setBoardError]   = useState('');
 
-  const [regQuery, setRegQuery]     = useState('');
-  const [lookupError, setLookupError] = useState('');
+  const [regQuery, setRegQuery]         = useState('');
+  const [lookupError, setLookupError]   = useState('');
   const [loadingLookup, setLoadingLookup] = useState(false);
 
   const [loadingDash, setLoadingDash] = useState(false);
-  const [dashData, setDashData]     = useState(null);
-  const [dashError, setDashError]   = useState('');
+  const [dashData, setDashData]       = useState(null);
+  const [dashError, setDashError]     = useState('');
 
   const panelRef = useRef(null);
   const btnRef   = useRef(null);
@@ -490,7 +495,7 @@ function RankingsPanel({ user }) {
   useEffect(() => {
     function handler(e) {
       if (panelRef.current && !panelRef.current.contains(e.target) &&
-          btnRef.current && !btnRef.current.contains(e.target)) {
+          btnRef.current  && !btnRef.current.contains(e.target)) {
         setOpen(false);
       }
     }
@@ -498,20 +503,16 @@ function RankingsPanel({ user }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const currentRole = user?.role?.toLowerCase() || '';
-  const isHOD = currentRole === 'hod';
-  
+  const currentRole          = user?.role?.toLowerCase() || '';
+  const isHOD                = currentRole === 'hod';
   const isLeaderboardAllowed = LEADERBOARD_ALLOWED_ROLES.includes(currentRole);
 
   const loadBoard = async () => {
     setLoadingBoard(true);
     setBoardError('');
     try {
-      // Backend's ?role= filters on the User.role field (faculty/hod/etc.),
-      // not department — always ask for everyone, then scope to the HOD's
-      // own department on the client.
-      const res = await API.get('/summary/faculty-summary/all-faculty/?role=all');
-      const rows = res.data?.leaderboard || [];
+      const res    = await API.get('/summary/faculty-summary/all-faculty/?role=all');
+      const rows   = res.data?.leaderboard || [];
       const scoped = await enrichAndFilterFaculty(rows, user);
       setBoard(rerankBoard(scoped));
       setLoadedOnce(true);
@@ -586,7 +587,9 @@ function RankingsPanel({ user }) {
           ref={btnRef}
           onClick={togglePanel}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold transition-all border ${
-            open ? 'bg-amber-50 text-amber-800 border-amber-200' : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50 border-transparent hover:border-amber-100'
+            open
+              ? 'bg-amber-50 text-amber-800 border-amber-200'
+              : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50 border-transparent hover:border-amber-100'
           }`}>
           🏆 <span className="hidden lg:inline">Rankings</span>
         </button>
@@ -595,7 +598,9 @@ function RankingsPanel({ user }) {
           <div ref={panelRef} className="absolute top-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mt-2 w-[22rem] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-br from-amber-50 to-white">
               <p className="text-sm font-black text-slate-800 flex items-center gap-1.5">🏆 Faculty Rankings</p>
-              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">{isHOD ? 'Ranked by department approved points' : 'Ranked by total approved points'}</p>
+              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                {isHOD ? 'Ranked by department approved points' : 'Ranked by total approved points'}
+              </p>
             </div>
 
             <form onSubmit={handleRegisterLookup} className="px-4 py-3 border-b border-slate-100 bg-slate-50">
@@ -609,7 +614,8 @@ function RankingsPanel({ user }) {
                   placeholder="e.g. FAC0123"
                   className="bg-transparent text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none flex-1 min-w-0"
                 />
-                <button type="submit" disabled={loadingLookup || !regQuery.trim()} className="text-[10px] font-bold text-blue-600 hover:text-blue-800 disabled:text-slate-300 transition flex-shrink-0">
+                <button type="submit" disabled={loadingLookup || !regQuery.trim()}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 disabled:text-slate-300 transition flex-shrink-0">
                   {loadingLookup ? '…' : 'Go →'}
                 </button>
               </div>
@@ -629,7 +635,8 @@ function RankingsPanel({ user }) {
               ) : (
                 <div className="divide-y divide-slate-50">
                   {board.map((row) => (
-                    <button key={row.user_id} onClick={() => openDashboard(row.register_no)} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-amber-50/60 transition text-left group">
+                    <button key={row.user_id} onClick={() => openDashboard(row.register_no)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-amber-50/60 transition text-left group">
                       <span className="w-7 text-center text-sm font-black text-slate-400 flex-shrink-0">
                         {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
                       </span>
@@ -638,7 +645,9 @@ function RankingsPanel({ user }) {
                         <p className="text-xs font-bold text-slate-800 capitalize truncate group-hover:text-amber-800 transition">{row.username}</p>
                         <p className="text-[10px] font-semibold text-slate-400">{row.register_no} · <span className="uppercase">{row.role?.replace(/_/g, ' ')}</span></p>
                       </div>
-                      <span className="text-xs font-black text-amber-700 flex-shrink-0">{row.total_points}<span className="text-[9px] font-bold text-slate-400"> pts</span></span>
+                      <span className="text-xs font-black text-amber-700 flex-shrink-0">
+                        {row.total_points}<span className="text-[9px] font-bold text-slate-400"> pts</span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -651,23 +660,23 @@ function RankingsPanel({ user }) {
   );
 }
 
-// ─── Navbar Search Bar Component ─────────────────────────────────────────────
+// ─── Navbar Search Bar Component ──────────────────────────────────────────────
 function FacultySearch({ user }) {
-  const [query, setQuery]           = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [searching, setSearching]   = useState(false);
-  const [loadingDash, setLoadingDash] = useState(false);
-  const [dashData, setDashData]     = useState(null);
+  const [query, setQuery]               = useState('');
+  const [suggestions, setSuggestions]   = useState([]);
+  const [searching, setSearching]       = useState(false);
+  const [loadingDash, setLoadingDash]   = useState(false);
+  const [dashData, setDashData]         = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [error, setError]           = useState('');
-  const inputRef                    = useRef(null);
-  const dropdownRef                 = useRef(null);
-  const debounceRef                 = useRef(null);
+  const [error, setError]               = useState('');
+  const inputRef    = useRef(null);
+  const dropdownRef = useRef(null);
+  const debounceRef = useRef(null);
 
   useEffect(() => {
     function handler(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target) &&
-          inputRef.current && !inputRef.current.contains(e.target)) {
+          inputRef.current  && !inputRef.current.contains(e.target)) {
         setShowDropdown(false);
       }
     }
@@ -676,18 +685,15 @@ function FacultySearch({ user }) {
   }, []);
 
   const currentRole = user?.role?.toLowerCase() || '';
-  const isHOD = currentRole === 'hod';
+  const isHOD       = currentRole === 'hod';
 
   const searchUsers = useCallback(async (q) => {
     if (!q.trim() || q.trim().length < 2) { setSuggestions([]); setShowDropdown(false); return; }
     setSearching(true);
     setError('');
     try {
-      // Backend's ?role= filters on User.role (faculty/hod/etc.), not
-      // department — search everyone, then scope to the HOD's own
-      // department on the client.
-      const res = await API.get(`/summary/faculty-summary/search/?q=${encodeURIComponent(q.trim())}&role=all`);
-      const rows = res.data?.results || [];
+      const res    = await API.get(`/summary/faculty-summary/search/?q=${encodeURIComponent(q.trim())}&role=all`);
+      const rows   = res.data?.results || [];
       const scoped = await enrichAndFilterFaculty(rows, user);
       setSuggestions(scoped);
       setShowDropdown(true);
@@ -746,11 +752,13 @@ function FacultySearch({ user }) {
             value={query}
             onChange={handleInput}
             onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-            placeholder={isHOD ? "Search department..." : "Search faculty..."}
+            placeholder={isHOD ? 'Search department...' : 'Search faculty...'}
             className="bg-transparent text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none flex-1 min-w-0"
           />
           {query && (
-            <button onClick={() => { setQuery(''); setSuggestions([]); setShowDropdown(false); setError(''); }} className="text-slate-400 hover:text-slate-600 transition text-sm flex-shrink-0">✕</button>
+            <button
+              onClick={() => { setQuery(''); setSuggestions([]); setShowDropdown(false); setError(''); }}
+              className="text-slate-400 hover:text-slate-600 transition text-sm flex-shrink-0">✕</button>
           )}
         </div>
 
@@ -766,12 +774,13 @@ function FacultySearch({ user }) {
               <p className="px-4 py-4 text-sm text-slate-400 font-medium text-center">No faculty found for "{query}"</p>
             )}
             <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
-              {suggestions.map(user => (
-                <button key={user.user_id} onClick={() => openDashboard(user.register_no)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition text-left group">
-                  <Avatar name={user.username} seed={user.register_no} photoUrl={user.profile_image_url} size="w-8 h-8" textSize="text-xs" />
+              {suggestions.map(u => (
+                <button key={u.user_id} onClick={() => openDashboard(u.register_no)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition text-left group">
+                  <Avatar name={u.username} seed={u.register_no} photoUrl={u.profile_image_url} size="w-8 h-8" textSize="text-xs" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{user.username}</p>
-                    <p className="text-[10px] font-semibold text-slate-400">{user.register_no} · <span className="uppercase">{user.role?.replace(/_/g, ' ')}</span></p>
+                    <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{u.username}</p>
+                    <p className="text-[10px] font-semibold text-slate-400">{u.register_no} · <span className="uppercase">{u.role?.replace(/_/g, ' ')}</span></p>
                   </div>
                   <span className="text-[10px] font-bold text-blue-500 bg-blue-50 group-hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition flex-shrink-0">View →</span>
                 </button>
@@ -786,10 +795,10 @@ function FacultySearch({ user }) {
 
 // ─── AppShell Main Component ──────────────────────────────────────────────────
 export default function AppShell() {
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const [user, setUser]       = useState(null);
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [user, setUser]           = useState(null);
+  const [loading, setLoading]     = useState(true);
   const [myPhotoUrl, setMyPhotoUrl] = useState(null);
 
   useEffect(() => {
@@ -818,11 +827,11 @@ export default function AppShell() {
 
   const handleSignOut = () => { localStorage.clear(); navigate('/login'); };
 
-  const role = user?.role?.toLowerCase() || '';
-  
-  const canSearch = SEARCH_ALLOWED_ROLES.includes(role);
-  const canSeeLeaderboard = LEADERBOARD_ALLOWED_ROLES.includes(role);
+  const role                = user?.role?.toLowerCase() || '';
+  const canSearch           = SEARCH_ALLOWED_ROLES.includes(role);
+  const canSeeLeaderboard   = LEADERBOARD_ALLOWED_ROLES.includes(role);
   const canSeeApprovalInbox = ['hod', 'principal', 'dean'].includes(role);
+  const canSeeDeptOverview  = ['principal', 'dean'].includes(role);
 
   if (loading) {
     return (
@@ -833,9 +842,15 @@ export default function AppShell() {
   }
 
   const navLink = (to, label, exact = false) => {
-    const active = exact ? location.pathname === to || location.pathname === '/' : location.pathname === to;
+    const active = exact
+      ? location.pathname === to || location.pathname === '/'
+      : location.pathname === to;
     return (
-      <Link to={to} className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>
+      <Link
+        to={to}
+        className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${
+          active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+        }`}>
         {label}
       </Link>
     );
@@ -846,7 +861,7 @@ export default function AppShell() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
 
-          {/* Left Side Navigation */}
+          {/* ── Left: Logo + Nav ── */}
           <div className="flex items-center gap-5 flex-shrink-0">
             <Link to="/dashboard" className="flex items-center gap-2 group">
               <div className="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-sm font-black tracking-tight group-hover:bg-blue-700 transition">FP</div>
@@ -856,30 +871,52 @@ export default function AppShell() {
             <nav className="flex items-center gap-1">
               {navLink('/dashboard', 'Dashboard', true)}
               {navLink('/profile', 'My Profile')}
-              
-              {/* Leaderboard Route visibility restriction */}
+
               {canSeeLeaderboard && (
-                <Link to="/leaderboard" className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${location.pathname === '/leaderboard' ? 'bg-amber-50 text-amber-800' : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'}`}>
+                <Link
+                  to="/leaderboard"
+                  className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${
+                    location.pathname === '/leaderboard'
+                      ? 'bg-amber-50 text-amber-800'
+                      : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
+                  }`}>
                   🏆 Leaderboard
                 </Link>
               )}
-              
-              {/* Approval Inbox visibility filtered exclusively for HOD, Principal, and Dean roles */}
+
               {canSeeApprovalInbox && (
-                <Link to="/requests" className={`text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${location.pathname === '/requests' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-600 hover:bg-blue-50'}`}>
+                <Link
+                  to="/requests"
+                  className={`text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                    location.pathname === '/requests'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-blue-600 hover:bg-blue-50'
+                  }`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                   Approval Inbox
+                </Link>
+              )}
+
+              {canSeeDeptOverview && (
+                <Link
+                  to="/dept-overview"
+                  className={`text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                    location.pathname === '/dept-overview'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-blue-50'
+                  }`}>
+                  🏛️ Departments
                 </Link>
               )}
             </nav>
           </div>
 
-          {/* Center Search Block */}
+          {/* ── Centre: Search ── */}
           <div className="flex-1 flex justify-center max-w-xs">
             {canSearch && <FacultySearch user={user} />}
           </div>
 
-          {/* Right Side Actions */}
+          {/* ── Right: Rankings + user info + sign out ── */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <RankingsPanel user={user} />
 
@@ -887,10 +924,14 @@ export default function AppShell() {
               <p className="text-xs font-bold text-slate-900 capitalize">{user?.username || 'Faculty'}</p>
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{user?.role?.replace(/_/g, ' ')}</p>
             </div>
+
             <Link to="/account" className="hidden sm:flex hover:ring-2 hover:ring-blue-300 rounded-full transition flex-shrink-0">
               <Avatar name={user?.username || 'Faculty'} seed={user?.register_no} photoUrl={myPhotoUrl} size="w-8 h-8" textSize="text-xs" />
             </Link>
-            <button onClick={handleSignOut} className="text-xs font-bold bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 px-3 py-2 rounded-xl border border-slate-200 hover:border-red-100 transition-all active:scale-[0.98]">
+
+            <button
+              onClick={handleSignOut}
+              className="text-xs font-bold bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 px-3 py-2 rounded-xl border border-slate-200 hover:border-red-100 transition-all active:scale-[0.98]">
               Sign Out
             </button>
           </div>

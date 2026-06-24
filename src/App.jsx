@@ -9,6 +9,7 @@ import Profile from './pages/Profile';
 import Account from './pages/Account';
 import ApprovalRequests from './pages/ApprovalRequests';
 import Leaderboard from './pages/Leaderboard';
+import PrincipalDeanDashboard from './pages/PrincipalDeanDashboard';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="account" element={<Account />} />
           <Route path="requests" element={<ApprovalRequests />} />
           <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="dept-overview" element={<PrincipalDeanDashboard />} />
         </Route>
 
         {/* Global Fallback Route */}

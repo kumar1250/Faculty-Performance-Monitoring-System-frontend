@@ -987,10 +987,7 @@ export default function Dashboard() {
         </div>
 
         {/* ══ LEADERBOARD ═════════════════════════════════════════════════════ */}
-        <LeaderboardPanel myId={data?.user_id || user?.id} isPrivileged={isPriv} currentUser={user} />
 
-        {/* ══ FACULTY DIRECTORY (Dean / Principal only) ═══════════════════════ */}
-        <FacultyDirectoryPanel isVisible={isDeanOrPrincipal} />
 
         {/* ══ FOOTER ══════════════════════════════════════════════════════════ */}
         <p className="text-center text-xs text-slate-400 font-medium">
