@@ -9,6 +9,7 @@ export default function Register() {
     register_no: '',
     email: '',
     password: '',
+    department: '',
     role: 'faculty', // [cite: 66]
   });
   const [error, setError] = useState('');
@@ -72,6 +73,27 @@ export default function Register() {
             <input type="password" name="password" required value={formData.password} onChange={handleChange}
               className="w-full text-sm px-4 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="••••••••" />
           </div>
+
+          <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Department
+              </label>
+              <select
+                name="department"
+                value={formData.department}
+                onChange={handleChange}
+                required
+                className="w-full text-sm px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700"
+              >
+                <option value="">Select Department</option>
+                <option value="CSE">Computer Science and Engineering</option>
+                <option value="CSE-ELITE">Computer Science and Engineering (ELITE)</option>
+                <option value="ECE">Electronics and Communication Engineering</option>
+                <option value="EEE">Electrical and Electronics Engineering</option>
+                <option value="MECH">Mechanical Engineering</option>
+                <option value="CIVIL">Civil Engineering</option>
+              </select>
+            </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Campus Role Group</label>

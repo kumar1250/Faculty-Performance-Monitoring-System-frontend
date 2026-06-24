@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../api/axios';
 import { fetchModuleRecords, fetchPresignedFileUrl } from '../api/moduleEndpoints';
+import { enrichAndFilterFaculty, DEPARTMENT_OPTIONS } from '../utils/facultyFilters';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRIVILEGED = ['hod', 'principal', 'dean', 'committee_coordinator', 'department_incharge'];
@@ -324,7 +325,19 @@ function ModuleDetailModal({ module, registerNo, onClose }) {
 }
 
 // ─── Leaderboard Panel ────────────────────────────────────────────────────────
-function LeaderboardPanel({ myId, isPrivileged }) {
+function rerank(rows) {
+  let rank = 0;
+  let lastPoints = null;
+  return rows.map((row, idx) => {
+    if (lastPoints === null || row.total_points !== lastPoints) {
+      rank = idx + 1;
+      lastPoints = row.total_points;
+    }
+    return { ...row, rank };
+  });
+}
+
+function LeaderboardPanel({ myId, isPrivileged, currentUser }) {
   const [board, setBoard]   = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -334,7 +347,10 @@ function LeaderboardPanel({ myId, isPrivileged }) {
     setLoading(true);
     try {
       const res = await API.get('/summary/faculty-summary/all-faculty/?role=all');
-      setBoard(res.data?.leaderboard || []);
+      const rows = res.data?.leaderboard || [];
+      // HOD -> only their department; dean/principal/others -> unchanged.
+      const scoped = await enrichAndFilterFaculty(rows, currentUser);
+      setBoard(rerank(scoped));
       setLoaded(true);
     } catch {}
     finally { setLoading(false); }
@@ -347,7 +363,11 @@ function LeaderboardPanel({ myId, isPrivileged }) {
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-black text-slate-900">🏆 Leaderboard</h3>
-          <p className="text-xs text-slate-400 font-medium">Faculty ranked by total approved points</p>
+          <p className="text-xs text-slate-400 font-medium">
+            {currentUser?.role?.toLowerCase() === 'hod'
+              ? 'Faculty in your department ranked by total approved points'
+              : 'Faculty ranked by total approved points'}
+          </p>
         </div>
         {!loaded && (
           <button onClick={load}
@@ -382,6 +402,150 @@ function LeaderboardPanel({ myId, isPrivileged }) {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Faculty Directory Panel (Dean / Principal only) ──────────────────────────
+// Shows every faculty member across every department with their role,
+// department, email and total points — searchable by name/register no/email,
+// and filterable down to a single department.
+function FacultyDirectoryPanel({ isVisible }) {
+  const [users, setUsers]     = useState([]);
+  const [pointsMap, setPointsMap] = useState({});
+  const [loaded, setLoaded]   = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+  const [search, setSearch]   = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+
+  useEffect(() => {
+    if (!isVisible || loaded || loading) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError('');
+      try {
+        const [usersRes, boardRes] = await Promise.all([
+          API.get('/accounts/user/list/'),
+          API.get('/summary/faculty-summary/all-faculty/?role=all').catch(() => ({ data: { leaderboard: [] } })),
+        ]);
+        if (cancelled) return;
+        const pMap = {};
+        (boardRes.data?.leaderboard || []).forEach(row => { pMap[row.register_no] = row.total_points; });
+        setUsers(usersRes.data || []);
+        setPointsMap(pMap);
+        setLoaded(true);
+      } catch {
+        if (!cancelled) setError('Could not load the faculty directory.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [isVisible, loaded, loading]);
+
+  if (!isVisible) return null;
+
+  const q = search.trim().toLowerCase();
+  const filtered = users
+    .filter(u => {
+      const matchesSearch = !q
+        || u.username?.toLowerCase().includes(q)
+        || u.register_no?.toLowerCase().includes(q)
+        || u.email?.toLowerCase().includes(q);
+      const matchesDept = !deptFilter || u.department === deptFilter;
+      return matchesSearch && matchesDept;
+    })
+    .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-900">🏛️ Faculty Directory — All Departments</h3>
+          <p className="text-xs text-slate-400 font-medium">Every faculty member across every department, with role, department and points.</p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 rounded-xl px-3 py-2 transition-all flex-1">
+            <span className="text-slate-400 text-sm flex-shrink-0">🔍</span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, register no, or email…"
+              className="bg-transparent text-sm font-semibold text-slate-700 placeholder-slate-400 outline-none flex-1 min-w-0"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600 transition text-sm flex-shrink-0">✕</button>
+            )}
+          </div>
+
+          <select
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            className="text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all sm:w-64"
+          >
+            <option value="">All Departments</option>
+            {DEPARTMENT_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center">
+          <div className="w-6 h-6 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-xs text-slate-400 font-semibold">Loading faculty directory…</p>
+        </div>
+      ) : error ? (
+        <p className="px-5 py-6 text-sm text-red-500 font-semibold text-center">{error}</p>
+      ) : filtered.length === 0 ? (
+        <p className="px-5 py-8 text-sm text-slate-400 font-medium text-center">
+          No faculty match {search ? `"${search}"` : 'this filter'}{deptFilter ? ' in this department' : ''}.
+        </p>
+      ) : (
+        <>
+          <div className="px-5 py-2 border-b border-slate-100 bg-slate-50">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+              {filtered.length} faculty member{filtered.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <div className="divide-y divide-slate-50 max-h-[28rem] overflow-y-auto">
+            {filtered.map(u => {
+              const deptLabel = DEPARTMENT_OPTIONS.find(d => d.value === u.department)?.label || u.department || '—';
+              const points = pointsMap[u.register_no];
+              return (
+                <div key={u.id || u.register_no} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
+                    {(u.username?.[0] || '?').toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 capitalize truncate">{u.username}</p>
+                    <p className="text-[11px] text-slate-400 font-semibold truncate">
+                      {u.register_no} · {u.email}
+                    </p>
+                  </div>
+                  <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                      {u.role?.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">{deptLabel}</span>
+                  </div>
+                  {points !== undefined && (
+                    <span className="text-sm font-black text-slate-600 flex-shrink-0">
+                      {points}<span className="text-[10px] font-bold text-slate-400"> pts</span>
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -461,6 +625,7 @@ export default function Dashboard() {
   const peerSize    = data?.peer_group_size;
   const behind      = data?.points_behind_first ?? 0;
   const isPriv      = PRIVILEGED.includes(user?.role?.toLowerCase() || '');
+  const isDeanOrPrincipal = ['dean', 'principal'].includes(user?.role?.toLowerCase() || '');
 
   const totalSubmitted = modules.reduce((s, m) => s + (m.total ?? 0), 0);
   const totalApproved  = modules.reduce((s, m) => s + (m.approved ?? 0), 0);
@@ -822,7 +987,10 @@ export default function Dashboard() {
         </div>
 
         {/* ══ LEADERBOARD ═════════════════════════════════════════════════════ */}
-        <LeaderboardPanel myId={data?.user_id || user?.id} isPrivileged={isPriv} />
+        <LeaderboardPanel myId={data?.user_id || user?.id} isPrivileged={isPriv} currentUser={user} />
+
+        {/* ══ FACULTY DIRECTORY (Dean / Principal only) ═══════════════════════ */}
+        <FacultyDirectoryPanel isVisible={isDeanOrPrincipal} />
 
         {/* ══ FOOTER ══════════════════════════════════════════════════════════ */}
         <p className="text-center text-xs text-slate-400 font-medium">

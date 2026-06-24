@@ -2,9 +2,12 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import API from '../../api/axios';
 import { fetchModuleRecords, fetchPresignedFileUrl } from '../../api/moduleEndpoints';
+import { enrichAndFilterFaculty } from '../../utils/facultyFilters';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRIVILEGED = ['hod', 'principal', 'dean', 'committee_coordinator', 'department_incharge'];
+const SEARCH_ALLOWED_ROLES = ['hod', 'principal', 'dean'];
+const LEADERBOARD_ALLOWED_ROLES = ['hod', 'principal', 'dean'];
 
 const MODULE_META = {
   'Book Publications':                    { icon: '📚', color: '#6366f1', bg: '#eef2ff' },
@@ -24,31 +27,24 @@ const MODULE_META = {
   'Student Project Works':                { icon: '🛠️', color: '#3b82f6', bg: '#eff6ff' },
   'Theory Courses Handled':               { icon: '⭐', color: '#eab308', bg: '#fefce8' },
 };
+
 function getMeta(label) {
   return MODULE_META[label] || { icon: '📌', color: '#3b82f6', bg: '#eff6ff' };
 }
 
-// ─── Deterministic Avatar (no backend profile photo exists, so we derive a
-// stable, per-person colored avatar from their name/register_no instead of
-// random gradients — same person looks the same everywhere in the app) ──────
+// ─── Deterministic Avatar ────────────────────────────────────────────────────
 const AVATAR_PALETTE = [
-  ['#6366f1', '#4f46e5'], // indigo
-  ['#10b981', '#059669'], // emerald
-  ['#f59e0b', '#d97706'], // amber
-  ['#ef4444', '#dc2626'], // red
-  ['#0ea5e9', '#0284c7'], // sky
-  ['#8b5cf6', '#7c3aed'], // violet
-  ['#ec4899', '#db2777'], // pink
-  ['#14b8a6', '#0d9488'], // teal
-  ['#f97316', '#ea580c'], // orange
-  ['#84cc16', '#65a30d'], // lime
+  ['#6366f1', '#4f46e5'], ['#10b981', '#059669'], ['#f59e0b', '#d97706'],
+  ['#ef4444', '#dc2626'], ['#0ea5e9', '#0284c7'], ['#8b5cf6', '#7c3aed'],
+  ['#ec4899', '#db2777'], ['#14b8a6', '#0d9488'], ['#f97316', '#ea580c'],
+  ['#84cc16', '#65a30d'],
 ];
 
 function hashString(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0; // 32-bit int
+    hash |= 0;
   }
   return Math.abs(hash);
 }
@@ -65,12 +61,6 @@ function getInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// seed should be something stable & unique per person — register_no is ideal,
-// falls back to username if register_no isn't available.
-// photoUrl: presigned S3 URL from the backend's profile_image_url field.
-// It's optional — most users won't have uploaded a photo yet, so we always
-// fall back to the deterministic initials avatar (incl. if the image 404s,
-// since presigned URLs expire after an hour and can go stale mid-session).
 function Avatar({ name, seed, photoUrl, size = 'w-8 h-8', textSize = 'text-xs' }) {
   const [imgFailed, setImgFailed] = useState(false);
   const [from, to] = getAvatarColors(seed || name || '?');
@@ -96,7 +86,6 @@ function Avatar({ name, seed, photoUrl, size = 'w-8 h-8', textSize = 'text-xs' }
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function Pill({ count, type }) {
   const s = {
     approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -136,12 +125,7 @@ function getExtension(url) {
   return (last || '').toLowerCase();
 }
 
-// Raw `certificate_file` URLs from list/detail responses are unsigned and
-// will 403 (AccessDenied) since the S3 bucket is private. This component
-// instead calls the module's dedicated /file/ action on click, which
-// returns a short-lived signed URL, and renders the file inline in the
-// card (image preview, or an embedded PDF viewer) rather than opening a
-// new tab — avoiding popup-blocker issues entirely.
+// ─── Secure File Preview Component ──────────────────────────────────────────
 function SecureFilePreview({ moduleLabel, recordId, rawUrl }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -155,7 +139,7 @@ function SecureFilePreview({ moduleLabel, recordId, rawUrl }) {
   const handleToggle = async () => {
     if (open) { setOpen(false); return; }
     setOpen(true);
-    if (resolvedUrl) return; // already fetched once, just re-show it
+    if (resolvedUrl) return;
     setError(false);
     setLoading(true);
     const url = await fetchPresignedFileUrl(API, moduleLabel, recordId);
@@ -188,15 +172,11 @@ function SecureFilePreview({ moduleLabel, recordId, rawUrl }) {
       {open && resolvedUrl && (
         <div className="w-full border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
           {isImage ? (
-            <img src={resolvedUrl} alt="Uploaded certificate"
-              className="w-full max-h-72 object-contain bg-white" />
+            <img src={resolvedUrl} alt="Uploaded certificate" className="w-full max-h-72 object-contain bg-white" />
           ) : isPdf ? (
-            <iframe src={resolvedUrl} title="Uploaded certificate"
-              className="w-full h-72 bg-white border-0" />
+            <iframe src={resolvedUrl} title="Uploaded certificate" className="w-full h-72 bg-white border-0" />
           ) : (
-            <div className="p-4 text-center text-xs text-slate-500 font-semibold">
-              Preview not available for this file type.
-            </div>
+            <div className="p-4 text-center text-xs text-slate-500 font-semibold">Preview not available for this file type.</div>
           )}
           <a href={resolvedUrl} target="_blank" rel="noopener noreferrer"
             className="block text-center text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline py-1.5 bg-white border-t border-slate-100">
@@ -208,7 +188,7 @@ function SecureFilePreview({ moduleLabel, recordId, rawUrl }) {
   );
 }
 
-// ─── Module Detail Drawer (inside Faculty Modal) ──────────────────────────────
+// ─── Module Drawer Component ──────────────────────────────────────────────────
 function ModuleDrawer({ module, registerNo, onClose }) {
   const [recordState, setRecordState] = useState({ key: null, records: [] });
 
@@ -228,19 +208,12 @@ function ModuleDrawer({ module, registerNo, onClose }) {
   const records = loadingRecords ? [] : recordState.records;
   const meta = getMeta(module.module);
   const skipFields = new Set(['user', 'faculty', 'password']);
-  const fieldKeys = records.length > 0
-    ? Object.keys(records[0]).filter(k => !skipFields.has(k))
-    : [];
+  const fieldKeys = records.length > 0 ? Object.keys(records[0]).filter(k => !skipFields.has(k)) : [];
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto"
-      onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-6 overflow-hidden"
-        onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100"
-          style={{ background: meta.bg }}>
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100" style={{ background: meta.bg }}>
           <div className="flex items-center gap-3">
             <span className="text-3xl">{meta.icon}</span>
             <div>
@@ -250,13 +223,9 @@ function ModuleDrawer({ module, registerNo, onClose }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/80 hover:bg-red-50 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-red-500 transition font-bold text-lg">
-            ✕
-          </button>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/80 hover:bg-red-50 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-red-500 transition font-bold text-lg">✕</button>
         </div>
 
-        {/* Stats strip */}
         <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-white">
           {[
             { l: 'Submitted', v: module.total,    c: '#3b82f6' },
@@ -271,7 +240,6 @@ function ModuleDrawer({ module, registerNo, onClose }) {
           ))}
         </div>
 
-        {/* Records */}
         <div className="p-5 max-h-[62vh] overflow-y-auto space-y-4">
           {loadingRecords ? (
             <div className="text-center py-12 text-slate-400">
@@ -289,10 +257,7 @@ function ModuleDrawer({ module, registerNo, onClose }) {
                 <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Record #{idx + 1}</span>
                 <div className="flex items-center gap-2">
                   {rec.points !== undefined && rec.points !== null && (
-                    <span className="text-xs font-black px-2 py-0.5 rounded-full border"
-                      style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '30' }}>
-                      {rec.points} pts
-                    </span>
+                    <span className="text-xs font-black px-2 py-0.5 rounded-full border" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '30' }}>{rec.points} pts</span>
                   )}
                   {rec.approval_status && <Pill count={rec.approval_status} type={rec.approval_status} />}
                 </div>
@@ -317,17 +282,14 @@ function ModuleDrawer({ module, registerNo, onClose }) {
         </div>
 
         <div className="px-6 py-3 border-t border-slate-100 flex justify-end bg-slate-50">
-          <button onClick={onClose}
-            className="px-5 py-2 text-sm font-bold bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition">
-            ← Back to Faculty Dashboard
-          </button>
+          <button onClick={onClose} className="px-5 py-2 text-sm font-bold bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition">← Back to Faculty Dashboard</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Faculty Dashboard Modal (search result) ──────────────────────────────────
+// ─── Faculty Dashboard Modal Component ──────────────────────────────────────────
 function FacultyDashboardModal({ data, onClose }) {
   const [activeModule, setActiveModule] = useState(null);
 
@@ -347,18 +309,13 @@ function FacultyDashboardModal({ data, onClose }) {
         <ModuleDrawer module={activeModule} registerNo={data.register_no} onClose={() => setActiveModule(null)} />
       )}
 
-      <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm p-3 overflow-y-auto"
-        onClick={onClose}>
-        <div className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-5xl my-4 overflow-hidden"
-          onClick={e => e.stopPropagation()}>
-
-          {/* ── Modal Header ── */}
+      <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm p-3 overflow-y-auto" onClick={onClose}>
+        <div className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-5xl my-4 overflow-hidden" onClick={e => e.stopPropagation()}>
           <div className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 px-6 py-5 text-white">
             <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/5 rounded-full pointer-events-none" />
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <Avatar name={data.username} seed={data.register_no} photoUrl={data.profile_image_url}
-                  size="w-14 h-14 mt-0.5" textSize="text-lg" />
+                <Avatar name={data.username} seed={data.register_no} photoUrl={data.profile_image_url} size="w-14 h-14 mt-0.5" textSize="text-lg" />
                 <div>
                   <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-0.5">Faculty Performance Dashboard</p>
                   <h2 className="text-2xl font-black capitalize">{data.username}</h2>
@@ -369,13 +326,9 @@ function FacultyDashboardModal({ data, onClose }) {
                   </div>
                 </div>
               </div>
-              <button onClick={onClose}
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white/80 hover:text-white transition font-bold text-lg flex-shrink-0">
-                ✕
-              </button>
+              <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white/80 hover:text-white transition font-bold text-lg flex-shrink-0">✕</button>
             </div>
 
-            {/* Rank + Points badges */}
             <div className="flex flex-wrap gap-3 mt-4">
               <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-center min-w-[90px]">
                 <p className="text-[10px] font-bold text-blue-200 uppercase tracking-wider">Total Points</p>
@@ -384,9 +337,7 @@ function FacultyDashboardModal({ data, onClose }) {
               {data.rank && (
                 <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-center min-w-[90px]">
                   <p className="text-[10px] font-bold text-blue-200 uppercase tracking-wider">Rank</p>
-                  <p className="text-3xl font-black">
-                    {data.rank === 1 ? '🥇' : data.rank === 2 ? '🥈' : data.rank === 3 ? '🥉' : `#${data.rank}`}
-                  </p>
+                  <p className="text-3xl font-black">{data.rank === 1 ? '🥇' : data.rank === 2 ? '🥈' : data.rank === 3 ? '🥉' : `#${data.rank}`}</p>
                 </div>
               )}
               {data.peer_group_size && (
@@ -410,7 +361,6 @@ function FacultyDashboardModal({ data, onClose }) {
             </div>
           </div>
 
-          {/* ── Quick Stats ── */}
           <div className="grid grid-cols-4 divide-x divide-slate-200 border-b border-slate-200 bg-white">
             {[
               { l: 'Submitted', v: totalSubmitted, c: '#3b82f6' },
@@ -425,13 +375,10 @@ function FacultyDashboardModal({ data, onClose }) {
             ))}
           </div>
 
-          {/* ── Modules Table ── */}
           <div className="p-5 max-h-[55vh] overflow-y-auto">
             <h3 className="text-sm font-black text-slate-700 mb-3 flex items-center gap-2">
               📋 All Activity Modules
-              <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                Click "View Details" to expand records
-              </span>
+              <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Click "View Details" to expand records</span>
             </h3>
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left">
@@ -458,26 +405,20 @@ function FacultyDashboardModal({ data, onClose }) {
                         <td className="px-4 py-3 text-xs font-bold text-slate-300">{idx + 1}</td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
-                              style={{ background: meta.bg }}>{meta.icon}</div>
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0" style={{ background: meta.bg }}>{meta.icon}</div>
                             <span className="text-sm font-bold text-slate-800 whitespace-nowrap">{m.module}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-center">
-                          <span className="text-sm font-black text-slate-700">{m.total ?? 0}</span>
-                        </td>
+                        <td className="px-3 py-3 text-center"><span className="text-sm font-black text-slate-700">{m.total ?? 0}</span></td>
                         <td className="px-3 py-3 text-center"><Pill count={m.approved ?? 0} type="approved" /></td>
                         <td className="px-3 py-3 text-center"><Pill count={m.pending ?? 0} type="pending" /></td>
                         <td className="px-3 py-3 text-center"><Pill count={m.rejected ?? 0} type="rejected" /></td>
                         <td className="px-3 py-3 text-right">
-                          <span className="text-sm font-black" style={{ color: (m.points ?? 0) > 0 ? meta.color : '#cbd5e1' }}>
-                            {m.points ?? 0}
-                          </span>
+                          <span className="text-sm font-black" style={{ color: (m.points ?? 0) > 0 ? meta.color : '#cbd5e1' }}>{m.points ?? 0}</span>
                         </td>
                         <td className="px-3 py-3 w-24">
                           <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div className="h-1.5 rounded-full transition-all duration-700"
-                              style={{ width: `${pct}%`, background: meta.color }} />
+                            <div className="h-1.5 rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: meta.color }} />
                           </div>
                         </td>
                         <td className="px-3 py-3 text-center">
@@ -485,9 +426,7 @@ function FacultyDashboardModal({ data, onClose }) {
                             onClick={() => hasData && setActiveModule(m)}
                             disabled={!hasData}
                             className={`inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-xl border transition-all
-                              ${hasData
-                                ? 'bg-white hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-slate-600 border-slate-200 shadow-sm'
-                                : 'text-slate-200 border-slate-100 cursor-default'}`}>
+                              ${hasData ? 'bg-white hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-slate-600 border-slate-200 shadow-sm' : 'text-slate-200 border-slate-100 cursor-default'}`}>
                             🔍 View Details
                           </button>
                         </td>
@@ -497,9 +436,7 @@ function FacultyDashboardModal({ data, onClose }) {
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-50 border-t-2 border-slate-200">
-                    <td colSpan="2" className="px-4 py-3">
-                      <span className="text-xs font-black text-slate-500 uppercase tracking-wider">TOTAL</span>
-                    </td>
+                    <td colSpan="2" className="px-4 py-3"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">TOTAL</span></td>
                     <td className="px-3 py-3 text-center font-black text-sm text-slate-800">{totalSubmitted}</td>
                     <td className="px-3 py-3 text-center font-black text-sm text-emerald-700">{totalApproved}</td>
                     <td className="px-3 py-3 text-center font-black text-sm text-amber-700">{totalPending}</td>
@@ -517,8 +454,22 @@ function FacultyDashboardModal({ data, onClose }) {
   );
 }
 
-// ─── Rankings Panel (navbar) ───────────────────────────────────────────────────
-function RankingsPanel({ isPrivileged }) {
+// ─── Rankings Panel Component ───────────────────────────────────────────────
+// Re-rank dense-style (ties share a rank) after department scoping removes
+// rows — otherwise an HOD would see gappy ranks like #1, #4, #7...
+function rerankBoard(rows) {
+  let rank = 0;
+  let lastPoints = null;
+  return rows.map((row, idx) => {
+    if (lastPoints === null || row.total_points !== lastPoints) {
+      rank = idx + 1;
+      lastPoints = row.total_points;
+    }
+    return { ...row, rank };
+  });
+}
+
+function RankingsPanel({ user }) {
   const [open, setOpen]             = useState(false);
   const [board, setBoard]           = useState([]);
   const [loadingBoard, setLoadingBoard] = useState(false);
@@ -536,7 +487,6 @@ function RankingsPanel({ isPrivileged }) {
   const panelRef = useRef(null);
   const btnRef   = useRef(null);
 
-  // Close on outside click
   useEffect(() => {
     function handler(e) {
       if (panelRef.current && !panelRef.current.contains(e.target) &&
@@ -548,12 +498,22 @@ function RankingsPanel({ isPrivileged }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const currentRole = user?.role?.toLowerCase() || '';
+  const isHOD = currentRole === 'hod';
+  
+  const isLeaderboardAllowed = LEADERBOARD_ALLOWED_ROLES.includes(currentRole);
+
   const loadBoard = async () => {
     setLoadingBoard(true);
     setBoardError('');
     try {
+      // Backend's ?role= filters on the User.role field (faculty/hod/etc.),
+      // not department — always ask for everyone, then scope to the HOD's
+      // own department on the client.
       const res = await API.get('/summary/faculty-summary/all-faculty/?role=all');
-      setBoard(res.data?.leaderboard || []);
+      const rows = res.data?.leaderboard || [];
+      const scoped = await enrichAndFilterFaculty(rows, user);
+      setBoard(rerankBoard(scoped));
       setLoadedOnce(true);
     } catch {
       setBoardError('Could not load rankings.');
@@ -600,11 +560,10 @@ function RankingsPanel({ isPrivileged }) {
     }
   };
 
-  if (!isPrivileged) return null;
+  if (!isLeaderboardAllowed) return null;
 
   return (
     <>
-      {/* Loading overlay while opening a faculty dashboard */}
       {loadingDash && (
         <div className="fixed inset-0 z-[65] bg-black/30 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl flex flex-col items-center gap-3">
@@ -614,7 +573,6 @@ function RankingsPanel({ isPrivileged }) {
         </div>
       )}
 
-      {/* Faculty Dashboard Modal */}
       {dashData && <FacultyDashboardModal data={dashData} onClose={() => setDashData(null)} />}
       {dashError && !dashData && (
         <div className="fixed bottom-6 right-6 z-[65] bg-red-50 border border-red-200 text-red-700 text-sm font-semibold px-4 py-3 rounded-xl shadow-lg max-w-xs">
@@ -628,24 +586,18 @@ function RankingsPanel({ isPrivileged }) {
           ref={btnRef}
           onClick={togglePanel}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold transition-all border ${
-            open
-              ? 'bg-amber-50 text-amber-800 border-amber-200'
-              : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50 border-transparent hover:border-amber-100'
+            open ? 'bg-amber-50 text-amber-800 border-amber-200' : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50 border-transparent hover:border-amber-100'
           }`}>
           🏆 <span className="hidden lg:inline">Rankings</span>
         </button>
 
         {open && (
-          <div ref={panelRef}
-            className="absolute top-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mt-2 w-[22rem] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
-
-            {/* Header */}
+          <div ref={panelRef} className="absolute top-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mt-2 w-[22rem] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-br from-amber-50 to-white">
               <p className="text-sm font-black text-slate-800 flex items-center gap-1.5">🏆 Faculty Rankings</p>
-              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">Ranked by total approved points</p>
+              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">{isHOD ? 'Ranked by department approved points' : 'Ranked by total approved points'}</p>
             </div>
 
-            {/* Register-number search */}
             <form onSubmit={handleRegisterLookup} className="px-4 py-3 border-b border-slate-100 bg-slate-50">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Find by Register Number</p>
               <div className="flex items-center gap-1.5 bg-white border border-slate-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 rounded-xl px-3 py-1.5 transition-all">
@@ -657,15 +609,13 @@ function RankingsPanel({ isPrivileged }) {
                   placeholder="e.g. FAC0123"
                   className="bg-transparent text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none flex-1 min-w-0"
                 />
-                <button type="submit" disabled={loadingLookup || !regQuery.trim()}
-                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 disabled:text-slate-300 transition flex-shrink-0">
+                <button type="submit" disabled={loadingLookup || !regQuery.trim()} className="text-[10px] font-bold text-blue-600 hover:text-blue-800 disabled:text-slate-300 transition flex-shrink-0">
                   {loadingLookup ? '…' : 'Go →'}
                 </button>
               </div>
               {lookupError && <p className="text-[10px] text-red-500 font-semibold mt-1.5">{lookupError}</p>}
             </form>
 
-            {/* Board */}
             <div className="max-h-80 overflow-y-auto">
               {loadingBoard ? (
                 <div className="py-10 text-center">
@@ -679,14 +629,11 @@ function RankingsPanel({ isPrivileged }) {
               ) : (
                 <div className="divide-y divide-slate-50">
                   {board.map((row) => (
-                    <button key={row.user_id}
-                      onClick={() => openDashboard(row.register_no)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-amber-50/60 transition text-left group">
+                    <button key={row.user_id} onClick={() => openDashboard(row.register_no)} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-amber-50/60 transition text-left group">
                       <span className="w-7 text-center text-sm font-black text-slate-400 flex-shrink-0">
                         {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
                       </span>
-                      <Avatar name={row.username} seed={row.register_no} photoUrl={row.profile_image_url}
-                        size="w-7 h-7" textSize="text-[10px]" />
+                      <Avatar name={row.username} seed={row.register_no} photoUrl={row.profile_image_url} size="w-7 h-7" textSize="text-[10px]" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold text-slate-800 capitalize truncate group-hover:text-amber-800 transition">{row.username}</p>
                         <p className="text-[10px] font-semibold text-slate-400">{row.register_no} · <span className="uppercase">{row.role?.replace(/_/g, ' ')}</span></p>
@@ -704,8 +651,8 @@ function RankingsPanel({ isPrivileged }) {
   );
 }
 
-// ─── Navbar Search Bar ────────────────────────────────────────────────────────
-function FacultySearch({ isPrivileged }) {
+// ─── Navbar Search Bar Component ─────────────────────────────────────────────
+function FacultySearch({ user }) {
   const [query, setQuery]           = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching]   = useState(false);
@@ -717,7 +664,6 @@ function FacultySearch({ isPrivileged }) {
   const dropdownRef                 = useRef(null);
   const debounceRef                 = useRef(null);
 
-  // Close on outside click
   useEffect(() => {
     function handler(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target) &&
@@ -729,13 +675,21 @@ function FacultySearch({ isPrivileged }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const currentRole = user?.role?.toLowerCase() || '';
+  const isHOD = currentRole === 'hod';
+
   const searchUsers = useCallback(async (q) => {
     if (!q.trim() || q.trim().length < 2) { setSuggestions([]); setShowDropdown(false); return; }
     setSearching(true);
     setError('');
     try {
-      const res = await API.get(`/summary/faculty-summary/search/?q=${encodeURIComponent(q.trim())}`);
-      setSuggestions(res.data?.results || []);
+      // Backend's ?role= filters on User.role (faculty/hod/etc.), not
+      // department — search everyone, then scope to the HOD's own
+      // department on the client.
+      const res = await API.get(`/summary/faculty-summary/search/?q=${encodeURIComponent(q.trim())}&role=all`);
+      const rows = res.data?.results || [];
+      const scoped = await enrichAndFilterFaculty(rows, user);
+      setSuggestions(scoped);
       setShowDropdown(true);
     } catch {
       setError('Search failed');
@@ -743,7 +697,7 @@ function FacultySearch({ isPrivileged }) {
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [user]);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -768,7 +722,6 @@ function FacultySearch({ isPrivileged }) {
 
   return (
     <>
-      {/* Loading overlay */}
       {loadingDash && (
         <div className="fixed inset-0 z-[65] bg-black/30 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl flex flex-col items-center gap-3">
@@ -778,10 +731,8 @@ function FacultySearch({ isPrivileged }) {
         </div>
       )}
 
-      {/* Faculty Dashboard Modal */}
       {dashData && <FacultyDashboardModal data={dashData} onClose={() => { setDashData(null); setQuery(''); }} />}
 
-      {/* Search widget */}
       <div className="relative" ref={dropdownRef}>
         <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-white border border-slate-200 hover:border-blue-300 focus-within:bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 rounded-xl px-3 py-1.5 transition-all w-56">
           <span className="text-slate-400 text-sm flex-shrink-0">
@@ -795,16 +746,14 @@ function FacultySearch({ isPrivileged }) {
             value={query}
             onChange={handleInput}
             onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-            placeholder="Search faculty…"
+            placeholder={isHOD ? "Search department..." : "Search faculty..."}
             className="bg-transparent text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none flex-1 min-w-0"
           />
           {query && (
-            <button onClick={() => { setQuery(''); setSuggestions([]); setShowDropdown(false); setError(''); }}
-              className="text-slate-400 hover:text-slate-600 transition text-sm flex-shrink-0">✕</button>
+            <button onClick={() => { setQuery(''); setSuggestions([]); setShowDropdown(false); setError(''); }} className="text-slate-400 hover:text-slate-600 transition text-sm flex-shrink-0">✕</button>
           )}
         </div>
 
-        {/* Dropdown */}
         {showDropdown && (
           <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
             <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
@@ -818,17 +767,13 @@ function FacultySearch({ isPrivileged }) {
             )}
             <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
               {suggestions.map(user => (
-                <button key={user.user_id}
-                  onClick={() => openDashboard(user.register_no)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition text-left group">
+                <button key={user.user_id} onClick={() => openDashboard(user.register_no)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition text-left group">
                   <Avatar name={user.username} seed={user.register_no} photoUrl={user.profile_image_url} size="w-8 h-8" textSize="text-xs" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{user.username}</p>
                     <p className="text-[10px] font-semibold text-slate-400">{user.register_no} · <span className="uppercase">{user.role?.replace(/_/g, ' ')}</span></p>
                   </div>
-                  <span className="text-[10px] font-bold text-blue-500 bg-blue-50 group-hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition flex-shrink-0">
-                    View →
-                  </span>
+                  <span className="text-[10px] font-bold text-blue-500 bg-blue-50 group-hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition flex-shrink-0">View →</span>
                 </button>
               ))}
             </div>
@@ -839,7 +784,7 @@ function FacultySearch({ isPrivileged }) {
   );
 }
 
-// ─── AppShell ─────────────────────────────────────────────────────────────────
+// ─── AppShell Main Component ──────────────────────────────────────────────────
 export default function AppShell() {
   const navigate  = useNavigate();
   const location  = useLocation();
@@ -862,10 +807,6 @@ export default function AppShell() {
     fetchUser();
   }, [navigate]);
 
-  // Separate, non-blocking fetch for the navbar avatar photo. Kept apart from
-  // fetchUser() above so a profile-photo hiccup (still uploading, S3 issue,
-  // no profile row yet) never trips the catch-and-logout path that guards
-  // session validity.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -877,9 +818,11 @@ export default function AppShell() {
 
   const handleSignOut = () => { localStorage.clear(); navigate('/login'); };
 
-  const role        = user?.role?.toLowerCase() || '';
-  const isHOD       = role === 'hod';
-  const isPrivileged = PRIVILEGED.includes(role);
+  const role = user?.role?.toLowerCase() || '';
+  
+  const canSearch = SEARCH_ALLOWED_ROLES.includes(role);
+  const canSeeLeaderboard = LEADERBOARD_ALLOWED_ROLES.includes(role);
+  const canSeeApprovalInbox = ['hod', 'principal', 'dean'].includes(role);
 
   if (loading) {
     return (
@@ -890,14 +833,9 @@ export default function AppShell() {
   }
 
   const navLink = (to, label, exact = false) => {
-    const active = exact
-      ? location.pathname === to || location.pathname === '/'
-      : location.pathname === to;
+    const active = exact ? location.pathname === to || location.pathname === '/' : location.pathname === to;
     return (
-      <Link to={to}
-        className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${
-          active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-        }`}>
+      <Link to={to} className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>
         {label}
       </Link>
     );
@@ -905,67 +843,54 @@ export default function AppShell() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased">
-
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
 
-          {/* Left: Logo + Nav */}
+          {/* Left Side Navigation */}
           <div className="flex items-center gap-5 flex-shrink-0">
             <Link to="/dashboard" className="flex items-center gap-2 group">
-              <div className="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-sm font-black tracking-tight group-hover:bg-blue-700 transition">
-                FP
-              </div>
-              <span className="font-black text-slate-900 tracking-tight text-base hidden sm:inline">
-                PerformanceHub
-              </span>
+              <div className="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-sm font-black tracking-tight group-hover:bg-blue-700 transition">FP</div>
+              <span className="font-black text-slate-900 tracking-tight text-base hidden sm:inline">PerformanceHub</span>
             </Link>
 
             <nav className="flex items-center gap-1">
               {navLink('/dashboard', 'Dashboard', true)}
               {navLink('/profile', 'My Profile')}
-              <Link to="/leaderboard"
-                className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${
-                  location.pathname === '/leaderboard'
-                    ? 'bg-amber-50 text-amber-800'
-                    : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
-                }`}>
-                🏆 Leaderboard
-              </Link>
-
-              {isHOD && (
-                <Link to="/requests"
-                  className={`px-3 py-2 rounded-xl text-sm font-bold transition-all border flex items-center gap-1.5 ${
-                    location.pathname === '/requests'
-                      ? 'bg-amber-50 text-amber-800 border-amber-200'
-                      : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50 border-transparent hover:border-amber-100'
-                  }`}>
-                  <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              
+              {/* Leaderboard Route visibility restriction */}
+              {canSeeLeaderboard && (
+                <Link to="/leaderboard" className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${location.pathname === '/leaderboard' ? 'bg-amber-50 text-amber-800' : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'}`}>
+                  🏆 Leaderboard
+                </Link>
+              )}
+              
+              {/* Approval Inbox visibility filtered exclusively for HOD, Principal, and Dean roles */}
+              {canSeeApprovalInbox && (
+                <Link to="/requests" className={`text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${location.pathname === '/requests' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-600 hover:bg-blue-50'}`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                   Approval Inbox
                 </Link>
               )}
             </nav>
-
           </div>
 
-          {/* Center: Search */}
+          {/* Center Search Block */}
           <div className="flex-1 flex justify-center max-w-xs">
-            <FacultySearch isPrivileged={isPrivileged} />
+            {canSearch && <FacultySearch user={user} />}
           </div>
 
-          {/* Right: User + Sign Out */}
+          {/* Right Side Actions */}
           <div className="flex items-center gap-3 flex-shrink-0">
+            <RankingsPanel user={user} />
+
             <div className="text-right hidden md:block">
               <p className="text-xs font-bold text-slate-900 capitalize">{user?.username || 'Faculty'}</p>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                {user?.role?.replace(/_/g, ' ')}
-              </p>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{user?.role?.replace(/_/g, ' ')}</p>
             </div>
-            <Link to="/account"
-              className="hidden sm:flex hover:ring-2 hover:ring-blue-300 rounded-full transition flex-shrink-0">
+            <Link to="/account" className="hidden sm:flex hover:ring-2 hover:ring-blue-300 rounded-full transition flex-shrink-0">
               <Avatar name={user?.username || 'Faculty'} seed={user?.register_no} photoUrl={myPhotoUrl} size="w-8 h-8" textSize="text-xs" />
             </Link>
-            <button onClick={handleSignOut}
-              className="text-xs font-bold bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 px-3 py-2 rounded-xl border border-slate-200 hover:border-red-100 transition-all active:scale-[0.98]">
+            <button onClick={handleSignOut} className="text-xs font-bold bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 px-3 py-2 rounded-xl border border-slate-200 hover:border-red-100 transition-all active:scale-[0.98]">
               Sign Out
             </button>
           </div>
@@ -976,7 +901,6 @@ export default function AppShell() {
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Outlet />
       </main>
-
     </div>
   );
 }

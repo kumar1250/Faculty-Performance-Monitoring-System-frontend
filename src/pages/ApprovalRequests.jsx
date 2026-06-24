@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import API from '../api/axios';
+import { getFacultyDirectory, DEPARTMENT_OPTIONS } from '../utils/facultyFilters';
 
 // Bookkeeping / internal fields we never want to show as "submitted data" —
 // everything else on a record gets rendered generically below.
@@ -46,10 +47,20 @@ export default function ApprovalRequests() {
   const [fetchingFile, setFetchingFile] = useState(false);
   const [requesterProfiles, setRequesterProfiles] = useState({}); // register_no -> profile data
 
+  // Active session context states
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // register_no -> canonical department (from /accounts/user/list/, the
+  // source of truth for department — Profile.department is just an
+  // optional free-text bio field and isn't reliable for access scoping).
+  const [facultyDirectory, setFacultyDirectory] = useState({});
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
+
+  // Dean/Principal can optionally narrow the inbox to one department.
+  // '' (default) means "All Departments".
+  const [departmentFilter, setDepartmentFilter] = useState('');
+
   // Fetches each distinct requester's profile (avatar/headline/department)
-  // exactly once, even though the same person can appear across many
-  // modules/requests. Failures are per-requester and silent — a missing
-  // profile for one person shouldn't affect anyone else's card.
   const loadRequesterProfiles = async (requestList) => {
     const registerNos = [...new Set(
       requestList.map(r => r.user_register_no || r.user?.register_no || r.faculty?.register_no).filter(Boolean)
@@ -74,13 +85,12 @@ export default function ApprovalRequests() {
     setLoading(true);
     try {
       const endpoints = [
-        // Update these URLs to match your Django router prefixes exactly!
         { url: '/book/book-publications/requests/', type: 'book' },
         { url: '/course/course/requests/', type: 'course' },
         { url: '/conference/publications/requests/', type: 'conference_pub' },
         { url: '/consultancy/requests/', type: 'consultancy' },
-        { url: '/fdps-attend/fdp/requests/', type: 'fdp_attend' }, // Make sure this matches your Postman test
-        { url: '/fdpsor/fdpso/requests/', type: 'fdp_organized' }, // Make sure this matches
+        { url: '/fdps-attend/fdp/requests/', type: 'fdp_attend' }, 
+        { url: '/fdpsor/fdpso/requests/', type: 'fdp_organized' }, 
         { url: '/funded/funded-projects/requests/', type: 'funded_project' }, 
         { url: '/journal/journalpublication/requests/', type: 'journal' },
         { url: '/learning/learning-material/requests/', type: 'learning_material' },
@@ -107,7 +117,24 @@ export default function ApprovalRequests() {
     }
   };
 
+  // Fetch logged-in user account details and profile metrics on mount
   useEffect(() => {
+    async function fetchUserContext() {
+      try {
+        const [userRes, directory] = await Promise.all([
+          API.get('/accounts/user/details/'),
+          getFacultyDirectory(),
+        ]);
+        setCurrentUser(userRes.data);
+        setFacultyDirectory(directory);
+      } catch (err) {
+        console.error('Failed to synchronize user authority scope:', err);
+      } finally {
+        setDirectoryLoaded(true);
+      }
+    }
+    
+    fetchUserContext();
     loadPendingRequests();
   }, []);
 
@@ -183,32 +210,79 @@ export default function ApprovalRequests() {
     setRemarks({ ...remarks, [`${type}-${pk}`]: val });
   };
 
-  if (loading) return <div className="flex justify-center p-10">Loading...</div>;
+  // Compute scannable scope based on current role restrictions
+  const currentRole = currentUser?.role?.toLowerCase() || '';
+
+  const visibleRequests = requests.filter(req => {
+    const facultyReg = req.user_register_no || req.user?.register_no || req.faculty?.register_no;
+    const facultyDept = facultyDirectory[facultyReg];
+
+    if (currentRole === 'hod') {
+      // HOD: own department only, always — no override.
+      return facultyDept === currentUser?.department;
+    }
+    if (currentRole === 'dean' || currentRole === 'principal') {
+      // Dean/Principal: everyone by default, or one department if they chose to filter.
+      if (!departmentFilter) return true;
+      return facultyDept === departmentFilter;
+    }
+    return false;
+  });
+
+  if (loading || !currentUser || !directoryLoaded) return <div className="flex justify-center p-10">Loading...</div>;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto antialiased font-sans p-6">
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-        <h2 className="text-xl font-black text-slate-900">Appraisal Approval Inbox</h2>
-        <p className="text-slate-500 text-sm mt-0.5">Evaluate pending faculty submissions, verify uploaded document assets, and clear point weight queues.</p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Appraisal Approval Inbox</h2>
+            <p className="text-slate-500 text-sm mt-0.5">
+              {currentRole === 'hod'
+                ? `Evaluating pending submissions originating within the ${currentUser?.department || 'assigned'} department queue.`
+                : departmentFilter
+                  ? `Evaluating pending submissions from the ${DEPARTMENT_OPTIONS.find(d => d.value === departmentFilter)?.label || departmentFilter} department.`
+                  : 'Evaluating global structural submissions, verifying uploaded document assets, and clearing point weight queues.'}
+            </p>
+          </div>
+
+          {/* Dean/Principal can narrow the inbox down to a single department */}
+          {(currentRole === 'dean' || currentRole === 'principal') && (
+            <div className="flex-shrink-0">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                Filter by Department
+              </label>
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              >
+                <option value="">All Departments</option>
+                {DEPARTMENT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
-      {requests.length === 0 ? (
+      {visibleRequests.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-400 font-medium italic">
-          No pending evaluation requests found inside your department tracking queue backlog.
+          No pending evaluation requests found inside your designated evaluation tracking queue backlog.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {requests.map((req) => {
+          {visibleRequests.map((req) => {
             const reqUid = `${req.itemType}-${req.id}`;
             
             const titleText = req.book_title || req.title || req.project_title || req.publication_title || req.subject_name || req.organization_name || req.event_name || req.scholar_name || req.Course_name || "Appraisal Submission Log";
             const facultyName = req.user_name || req.user?.username || req.faculty?.username || "Faculty Member";
             const facultyReg = req.user_register_no || req.user?.register_no || req.faculty?.register_no || "N/A";
             const requesterProfile = requesterProfiles[facultyReg];
+            const facultyDeptCode = facultyDirectory[facultyReg];
+            const facultyDeptLabel = DEPARTMENT_OPTIONS.find(d => d.value === facultyDeptCode)?.label || facultyDeptCode;
 
-            // Every field actually present on this record, minus bookkeeping
-            // fields — so each module's real submitted data shows up without
-            // needing a hardcoded field list per module.
             const detailEntries = Object.entries(req)
               .filter(([key]) => !SKIP_FIELDS.has(key))
               .map(([key, val]) => [key, formatDetailValue(key, val)])
@@ -223,7 +297,6 @@ export default function ApprovalRequests() {
                     </span>
                     <h4 className="text-lg font-bold text-slate-900 mt-2">{titleText}</h4>
 
-                    {/* Requester profile: avatar, name, headline, department */}
                     <div className="flex items-center gap-2.5 mt-2">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black overflow-hidden flex-shrink-0">
                         {requesterProfile?.profile_image_url ? (
@@ -237,18 +310,17 @@ export default function ApprovalRequests() {
                         <p className="text-xs text-slate-500 font-medium">
                           Submitted By: <span className="text-blue-600 font-bold">{facultyName}</span> ({facultyReg})
                         </p>
-                        {(requesterProfile?.headline || requesterProfile?.department) && (
+                        {(requesterProfile?.headline || facultyDeptLabel) && (
                           <p className="text-[11px] text-slate-400 font-semibold truncate">
                             {requesterProfile?.headline}
-                            {requesterProfile?.headline && requesterProfile?.department && ' · '}
-                            {requesterProfile?.department && `🏛️ ${requesterProfile.department}`}
+                            {requesterProfile?.headline && facultyDeptLabel && ' · '}
+                            {facultyDeptLabel && `🏛️ ${facultyDeptLabel}`}
                           </p>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Submitted data — generic, covers every module's actual fields */}
                   {detailEntries.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50/60 border border-slate-100 p-3 rounded-xl text-xs text-slate-600">
                       {detailEntries.map(([key, val]) => (

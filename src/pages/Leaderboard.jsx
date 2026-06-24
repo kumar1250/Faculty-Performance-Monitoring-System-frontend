@@ -2,8 +2,23 @@ import { useEffect, useState } from 'react';
 import API from '../api/axios';
 import Avatar from '../components/Leaderboard/Avatar';
 import FacultyDetailModal from '../components/Leaderboard/FacultyDetailModal';
+import { enrichAndFilterFaculty } from '../utils/facultyFilters';
 
 const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+// Re-rank dense-style (ties share a rank) after department scoping removes
+// rows — otherwise an HOD would see gappy ranks like #1, #4, #7...
+function rerank(rows) {
+  let rank = 0;
+  let lastPoints = null;
+  return rows.map((row, idx) => {
+    if (lastPoints === null || row.total_points !== lastPoints) {
+      rank = idx + 1;
+      lastPoints = row.total_points;
+    }
+    return { ...row, rank };
+  });
+}
 
 export default function Leaderboard() {
   const [board, setBoard]       = useState([]);
@@ -20,9 +35,18 @@ export default function Leaderboard() {
       setLoading(true);
       setError('');
       try {
+        // Who's looking at this page — needed to know whether to scope the
+        // list down to just their department (HOD) or show everyone.
+        const userRes = await API.get('/accounts/user/details/');
+        if (cancelled) return;
+
         // Highest points first, dense-ranked (ties share a rank), every role included.
         const res = await API.get('/summary/faculty-summary/leaderboard/?role=all');
-        if (!cancelled) setBoard(res.data?.leaderboard || []);
+        const rows = res.data?.leaderboard || [];
+
+        // HOD -> only their department; dean/principal/others -> unchanged.
+        const scoped = await enrichAndFilterFaculty(rows, userRes.data);
+        if (!cancelled) setBoard(rerank(scoped));
       } catch {
         if (!cancelled) setError('Could not load the leaderboard. Please try again.');
       } finally {
