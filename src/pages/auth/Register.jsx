@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import API from '../../api/axios';
+
+// Roles that oversee the whole institution rather than one department.
+// For these, department is locked to 'ALL' instead of being user-selectable.
+const INSTITUTION_WIDE_ROLES = ['principal', 'dean'];
 
 export default function Register() {
   const navigate = useNavigate();
@@ -14,6 +18,20 @@ export default function Register() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const isInstitutionWide = INSTITUTION_WIDE_ROLES.includes(formData.role);
+
+  // When switching to Principal/Dean, auto-lock department to 'ALL'.
+  // When switching away from those roles, clear it so the person has to
+  // pick an actual department again (an old 'ALL' value shouldn't carry
+  // over to a department-scoped role like HOD or Faculty).
+  useEffect(() => {
+    if (isInstitutionWide) {
+      setFormData(prev => ({ ...prev, department: 'ALL' }));
+    } else {
+      setFormData(prev => (prev.department === 'ALL' ? { ...prev, department: '' } : prev));
+    }
+  }, [isInstitutionWide]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -75,9 +93,42 @@ export default function Register() {
           </div>
 
           <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Department
-              </label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Campus Role Group
+            </label>
+            <select 
+              name="role" 
+              value={formData.role} 
+              onChange={handleChange}
+              className="w-full text-sm px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700"
+            >
+              <option value="faculty">Faculty Member</option> {/* [cite: 66] */}
+              <option value="department_incharge">Department In-Charge</option> {/* [cite: 66] */}
+              <option value="committee_coordinator">Committee Coordinator</option> {/* [cite: 66] */}
+              <option value="hod">Head of Department (HOD)</option> {/* [cite: 66] */}
+              <option value="dean">Dean</option> {/* [cite: 66] */}
+              <option value="principal">Principal</option> {/* [cite: 66] */}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Department
+            </label>
+            {isInstitutionWide ? (
+              <>
+                {/* Locked display for institution-wide roles — not a real <select>,
+                    so there's nothing to pick and nothing that can desync from
+                    the auto-set 'ALL' value above. */}
+                <div className="w-full text-sm px-4 py-2.5 border border-slate-200 bg-slate-100 rounded-xl font-medium text-slate-500 flex items-center justify-between">
+                  <span>All Departments</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Auto-assigned</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  {formData.role === 'principal' ? 'Principal' : 'Dean'} accounts oversee every department, so this is set automatically.
+                </p>
+              </>
+            ) : (
               <select
                 name="department"
                 value={formData.department}
@@ -93,23 +144,7 @@ export default function Register() {
                 <option value="MECH">Mechanical Engineering</option>
                 <option value="CIVIL">Civil Engineering</option>
               </select>
-            </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Campus Role Group</label>
-            <select 
-              name="role" 
-              value={formData.role} 
-              onChange={handleChange}
-              className="w-full text-sm px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700"
-            >
-              <option value="faculty">Faculty Member</option> {/* [cite: 66] */}
-              <option value="department_incharge">Department In-Charge</option> {/* [cite: 66] */}
-              <option value="committee_coordinator">Committee Coordinator</option> {/* [cite: 66] */}
-              <option value="hod">Head of Department (HOD)</option> {/* [cite: 66] */}
-              <option value="dean">Dean</option> {/* [cite: 66] */}
-              <option value="principal">Principal</option> {/* [cite: 66] */}
-            </select>
+            )}
           </div>
 
           <button 

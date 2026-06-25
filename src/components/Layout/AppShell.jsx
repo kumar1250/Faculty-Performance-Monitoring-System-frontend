@@ -660,23 +660,31 @@ function RankingsPanel({ user }) {
   );
 }
 
-// ─── Navbar Search Bar Component ──────────────────────────────────────────────
-function FacultySearch({ user }) {
-  const [query, setQuery]               = useState('');
-  const [suggestions, setSuggestions]   = useState([]);
-  const [searching, setSearching]       = useState(false);
-  const [loadingDash, setLoadingDash]   = useState(false);
-  const [dashData, setDashData]         = useState(null);
+// ─── Navbar Search Bar ────────────────────────────────────────────────────────
+// Uses the real backend endpoints:
+//   GET /summary/faculty-summary/search/?q=<text>         -> live suggestions
+//   GET /summary/faculty-summary/dashboard/?register_no=  -> full detail + rank
+// HOD department-scoping is enforced server-side (HOD only sees their own
+// department's results; principal/dean see everyone) — no client-side
+// roster fetching or filtering needed.
+function FacultySearch({ isPrivileged }) {
+  const [query, setQuery]             = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching]     = useState(false);
+  const [loadingDash, setLoadingDash] = useState(false);
+  const [dashData, setDashData]       = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [error, setError]               = useState('');
-  const inputRef    = useRef(null);
-  const dropdownRef = useRef(null);
-  const debounceRef = useRef(null);
+  const [error, setError]             = useState('');
+  const inputRef                      = useRef(null);
+  const dropdownRef                   = useRef(null);
+  const debounceRef                   = useRef(null);
+  const requestSeq                    = useRef(0); // guards against out-of-order responses
 
+  // Close on outside click
   useEffect(() => {
     function handler(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target) &&
-          inputRef.current  && !inputRef.current.contains(e.target)) {
+          inputRef.current && !inputRef.current.contains(e.target)) {
         setShowDropdown(false);
       }
     }
@@ -684,32 +692,40 @@ function FacultySearch({ user }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const currentRole = user?.role?.toLowerCase() || '';
-  const isHOD       = currentRole === 'hod';
+  const runSearch = useCallback(async (q) => {
+    const term = q.trim();
+    if (term.length < 2) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      setSearching(false);
+      return;
+    }
 
-  const searchUsers = useCallback(async (q) => {
-    if (!q.trim() || q.trim().length < 2) { setSuggestions([]); setShowDropdown(false); return; }
+    const seq = ++requestSeq.current;
     setSearching(true);
     setError('');
     try {
-      const res    = await API.get(`/summary/faculty-summary/search/?q=${encodeURIComponent(q.trim())}&role=all`);
-      const rows   = res.data?.results || [];
-      const scoped = await enrichAndFilterFaculty(rows, user);
-      setSuggestions(scoped);
+      const res = await API.get('/summary/faculty-summary/search/', {
+        params: { q: term },
+      });
+      if (seq !== requestSeq.current) return; // a newer keystroke already fired
+      setSuggestions(res.data?.results || []);
       setShowDropdown(true);
     } catch {
-      setError('Search failed');
+      if (seq !== requestSeq.current) return;
+      setError('Could not search faculty.');
       setSuggestions([]);
+      setShowDropdown(true);
     } finally {
-      setSearching(false);
+      if (seq === requestSeq.current) setSearching(false);
     }
-  }, [user]);
+  }, []);
 
   const handleInput = (e) => {
     const val = e.target.value;
     setQuery(val);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => searchUsers(val), 300);
+    debounceRef.current = setTimeout(() => runSearch(val), 300);
   };
 
   const openDashboard = async (registerNo) => {
@@ -717,7 +733,9 @@ function FacultySearch({ user }) {
     setLoadingDash(true);
     setError('');
     try {
-      const res = await API.get(`/summary/faculty-summary/dashboard/?register_no=${registerNo}&role=all`);
+      const res = await API.get('/summary/faculty-summary/dashboard/', {
+        params: { register_no: registerNo, role: 'all' },
+      });
       setDashData(res.data);
     } catch {
       setError('Could not load faculty dashboard.');
@@ -726,8 +744,11 @@ function FacultySearch({ user }) {
     }
   };
 
+  if (!isPrivileged) return null;
+
   return (
     <>
+      {/* Loading overlay */}
       {loadingDash && (
         <div className="fixed inset-0 z-[65] bg-black/30 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl flex flex-col items-center gap-3">
@@ -737,8 +758,10 @@ function FacultySearch({ user }) {
         </div>
       )}
 
+      {/* Faculty Dashboard Modal */}
       {dashData && <FacultyDashboardModal data={dashData} onClose={() => { setDashData(null); setQuery(''); }} />}
 
+      {/* Search widget */}
       <div className="relative" ref={dropdownRef}>
         <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-white border border-slate-200 hover:border-blue-300 focus-within:bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 rounded-xl px-3 py-1.5 transition-all w-56">
           <span className="text-slate-400 text-sm flex-shrink-0">
@@ -752,16 +775,16 @@ function FacultySearch({ user }) {
             value={query}
             onChange={handleInput}
             onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-            placeholder={isHOD ? 'Search department...' : 'Search faculty...'}
+            placeholder="Search faculty…"
             className="bg-transparent text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none flex-1 min-w-0"
           />
           {query && (
-            <button
-              onClick={() => { setQuery(''); setSuggestions([]); setShowDropdown(false); setError(''); }}
+            <button onClick={() => { setQuery(''); setSuggestions([]); setShowDropdown(false); setError(''); }}
               className="text-slate-400 hover:text-slate-600 transition text-sm flex-shrink-0">✕</button>
           )}
         </div>
 
+        {/* Dropdown */}
         {showDropdown && (
           <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
             <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
@@ -774,15 +797,24 @@ function FacultySearch({ user }) {
               <p className="px-4 py-4 text-sm text-slate-400 font-medium text-center">No faculty found for "{query}"</p>
             )}
             <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
-              {suggestions.map(u => (
-                <button key={u.user_id} onClick={() => openDashboard(u.register_no)}
+              {suggestions.map(user => (
+                <button key={user.user_id}
+                  onClick={() => openDashboard(user.register_no)}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition text-left group">
-                  <Avatar name={u.username} seed={u.register_no} photoUrl={u.profile_image_url} size="w-8 h-8" textSize="text-xs" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{u.username}</p>
-                    <p className="text-[10px] font-semibold text-slate-400">{u.register_no} · <span className="uppercase">{u.role?.replace(/_/g, ' ')}</span></p>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0 overflow-hidden">
+                    {user.profile_image_url ? (
+                      <img src={user.profile_image_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      (user.username?.[0] || '?').toUpperCase()
+                    )}
                   </div>
-                  <span className="text-[10px] font-bold text-blue-500 bg-blue-50 group-hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition flex-shrink-0">View →</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{user.username}</p>
+                    <p className="text-[10px] font-semibold text-slate-400 capitalize">{user.register_no} · {user.role}</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-500 bg-blue-50 group-hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition flex-shrink-0">
+                    View →
+                  </span>
                 </button>
               ))}
             </div>
@@ -913,12 +945,13 @@ export default function AppShell() {
 
           {/* ── Centre: Search ── */}
           <div className="flex-1 flex justify-center max-w-xs">
-            {canSearch && <FacultySearch user={user} />}
+            {/* FIX: pass isPrivileged={canSearch} instead of user={user} */}
+            <FacultySearch isPrivileged={canSearch} />
           </div>
 
           {/* ── Right: Rankings + user info + sign out ── */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <RankingsPanel user={user} />
+
 
             <div className="text-right hidden md:block">
               <p className="text-xs font-bold text-slate-900 capitalize">{user?.username || 'Faculty'}</p>

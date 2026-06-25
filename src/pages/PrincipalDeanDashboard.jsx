@@ -1,10 +1,22 @@
 /**
- * PrincipalDeanDashboard.jsx  — UPDATED
+ * PrincipalDeanDashboard.jsx  — FIXED
  *
- * KEY FIX: Now uses a SINGLE API call to /summary/faculty-summary/leaderboard/?role=all
- * which now returns `department` in each row (after the views.py fix).
- * The old /accounts/user/list/ call has been removed — no more double fetch,
- * no more broken department grouping.
+ * ROOT CAUSE of the broken dashboard: /summary/faculty-summary/leaderboard/
+ * does NOT return a `department` field on its rows (confirmed in
+ * FACULTY_SUMMARY/views.py — the leaderboard rows only carry user_id,
+ * register_no, username, email, role, total_points, profile_image_url).
+ * The previous version of this file assumed `department` was present,
+ * so every department bucket came back empty and the whole screen
+ * (summary cards, distribution bars, department table, drill-down) broke.
+ *
+ * FIX (frontend-only, no backend changes):
+ * Reuse the existing `getFacultyDirectory()` helper from
+ * `utils/facultyFilters.js` (already used elsewhere in the app, e.g.
+ * ApprovalRequests.jsx) which hits /accounts/user/list/ once, caches the
+ * register_no -> department map in memory, and lets us enrich the
+ * leaderboard rows with `department` via `attachDepartments()`.
+ * Two API calls total (leaderboard + user directory), but the directory
+ * call is cached app-wide so it's free on subsequent visits.
  *
  * VIEW 1 — Department Summary Table
  * VIEW 2 — Department Leaderboard (slides in per department)
@@ -14,7 +26,11 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import API from '../api/axios';
 import FacultyDetailModal from '../components/Leaderboard/FacultyDetailModal';
 import Avatar from '../components/Leaderboard/Avatar';
-import { DEPARTMENT_OPTIONS } from '../utils/facultyFilters';
+import {
+  DEPARTMENT_OPTIONS,
+  getFacultyDirectory,
+  attachDepartments,
+} from '../utils/facultyFilters';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,6 +65,7 @@ function rerank(rows) {
 }
 
 function deptLabel(code) {
+  if (code === 'UNASSIGNED') return 'Unassigned';
   return DEPARTMENT_OPTIONS.find(d => d.value === code)?.label || code || 'Unknown';
 }
 
@@ -73,14 +90,11 @@ function Bar({ value, max, color }) {
 }
 
 // ─── Department Leaderboard (view 2) ─────────────────────────────────────────
-
 function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
   const [loadingDash, setLoadingDash] = useState(false);
   const [dashData, setDashData]       = useState(null);
   const [dashError, setDashError]     = useState('');
 
-  // Filter faculty to this dept, then rank
-  // allFaculty rows already have total_points from the leaderboard API
   const board = useMemo(() => {
     const members = allFaculty
       .filter(u => u.department === dept.code)
@@ -111,6 +125,14 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
 
+      {/* ── Back button — standalone and clearly visible above the banner ── */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-blue-700 bg-white border border-slate-200 hover:border-blue-300 rounded-xl px-4 py-2 shadow-sm hover:shadow transition-all"
+      >
+        ← Back to All Departments
+      </button>
+
       {loadingDash && (
         <div className="fixed inset-0 z-[65] bg-black/30 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl flex flex-col items-center gap-3">
@@ -140,12 +162,6 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
 
         <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1.5 text-white/70 hover:text-white text-xs font-bold mb-3 transition"
-            >
-              ← All Departments
-            </button>
             <h2 className="text-2xl font-black leading-tight">{deptLabel(dept.code)}</h2>
             <p className="text-white/70 text-sm font-semibold mt-1">
               Department Leaderboard · {board.length} faculty members
@@ -361,18 +377,29 @@ export default function PrincipalDeanDashboard() {
   const [error, setError]           = useState('');
   const [activeDept, setActiveDept] = useState(null);
 
-  // ── Fetch — single API call ──
+  // ── Fetch ──
+  // Two calls: the leaderboard (points/rank) and the user directory
+  // (department) — the directory is cached in memory by facultyFilters.js,
+  // so this is a one-time cost across the whole app, not per-visit.
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError('');
       try {
-        // FIXED: single call — leaderboard now includes `department` field
-        const boardRes = await API.get('/summary/faculty-summary/leaderboard/?role=all');
+        const [boardRes, directory] = await Promise.all([
+          API.get('/summary/faculty-summary/leaderboard/?role=all'),
+          getFacultyDirectory(),
+        ]);
         if (cancelled) return;
 
-        const rows = boardRes.data?.leaderboard || [];
+        const rawRows = boardRes.data?.leaderboard || [];
+        const enriched = attachDepartments(rawRows, directory);
+        const knownCodes = new Set(DEPARTMENT_OPTIONS.map(d => d.value));
+        const rows = enriched.map(r => ({
+          ...r,
+          department: knownCodes.has(r.department) ? r.department : 'UNASSIGNED',
+        }));
         setAllFaculty(rows);
       } catch {
         if (!cancelled) setError('Could not load department data. Please try again.');
@@ -385,25 +412,21 @@ export default function PrincipalDeanDashboard() {
   }, []);
 
   // ── Derive department stats directly from leaderboard rows ──
+  // (rows are pre-normalized in the fetch effect: unknown/missing department
+  // becomes 'UNASSIGNED', so every faculty member lands in exactly one bucket)
   const departments = useMemo(() => {
     const deptMap = {};
-    DEPARTMENT_OPTIONS.forEach(opt => {
-      deptMap[opt.value] = {
-        code: opt.value,
-        facultyCount: 0,
-        totalPoints: 0,
-      };
-    });
 
-    // allFaculty rows now carry `department` — no second source needed
     allFaculty.forEach(u => {
-      if (!u.department || !deptMap[u.department]) return;
-      deptMap[u.department].facultyCount += 1;
-      deptMap[u.department].totalPoints  += u.total_points ?? 0;
+      const code = u.department || 'UNASSIGNED';
+      if (!deptMap[code]) {
+        deptMap[code] = { code, facultyCount: 0, totalPoints: 0 };
+      }
+      deptMap[code].facultyCount += 1;
+      deptMap[code].totalPoints  += u.total_points ?? 0;
     });
 
     return Object.values(deptMap)
-      .filter(d => d.facultyCount > 0)
       .map(d => ({
         ...d,
         avgPoints: d.facultyCount > 0 ? Math.round(d.totalPoints / d.facultyCount) : 0,
