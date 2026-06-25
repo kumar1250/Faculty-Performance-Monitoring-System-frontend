@@ -4,6 +4,7 @@ import API from '../api/axios';
 import { fetchModuleRecords, fetchPresignedFileUrl } from '../api/moduleEndpoints';
 import { enrichAndFilterFaculty, DEPARTMENT_OPTIONS } from '../utils/facultyFilters';
 
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRIVILEGED = ['hod', 'principal', 'dean', 'committee_coordinator', 'department_incharge'];
 
@@ -682,6 +683,11 @@ export default function Dashboard() {
                   {user?.role && <span>🏷️ {user.role.replace(/_/g, ' ').toUpperCase()}</span>}
                   {user?.register_no && <span>🆔 {user.register_no}</span>}
                   {user?.email && <span>✉️ {user.email}</span>}
+                  {user?.department && (
+                    <span>
+                      🏛️ {DEPARTMENT_OPTIONS.find(d => d.value === user.department)?.label || user.department}
+                    </span>
+                  )}
                 </p>
 
                 {/* Profile details: headline, department, experience, bio */}
