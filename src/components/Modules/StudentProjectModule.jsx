@@ -44,14 +44,19 @@ export default function StudentProjectModule({ records = [], isReadOnly, current
     e.stopPropagation();
     setEditingId(record.id);
     setFormData({
-      project_title: record.project_title,
-      project_type: record.project_type,
-      publication_status: record.publication_status,
+      project_title: record.project_title || '',
+      project_type: record.project_type || 'BTECH',
+      publication_status: record.publication_status || 'WITHOUT_PUBLICATION',
       student_names: record.student_names || '',
       academic_year: record.academic_year || '',
       certificate_file: null
     });
     setIsOpen(true);
+  };
+
+  const closeReviewPanel = () => {
+    setSelectedRecord(null);
+    setSecureFileUrl(null);
   };
 
   useEffect(() => {
@@ -82,9 +87,15 @@ export default function StudentProjectModule({ records = [], isReadOnly, current
     data.append('student_names', formData.student_names);
     data.append('academic_year', formData.academic_year);
     
+    // RESOLUTION WORKAROUND: Pull primitive primary key safely to avoid sending stringified objects
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      data.append('user', record.user);
+      if (record && record.user) {
+        const userId = typeof record.user === 'object' ? record.user.id : record.user;
+        data.append('user', userId);
+      } else {
+        data.append('user', currentUserId);
+      }
     } else {
       data.append('user', currentUserId);
     }
@@ -106,7 +117,7 @@ export default function StudentProjectModule({ records = [], isReadOnly, current
       setIsOpen(false);
       onRefresh();
     } catch (err) {
-      alert('Operation failed.');
+      alert('Operation failed. Please review mandatory properties.');
     } finally {
       setLoading(false);
     }
@@ -191,14 +202,14 @@ export default function StudentProjectModule({ records = [], isReadOnly, current
 
       {/* DETAILED INSPECTION DRAWER MODAL */}
       {selectedRecord && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full p-6 space-y-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">Project Inspection View</span>
                 <h4 className="text-xl font-black text-slate-900 mt-1">{selectedRecord.project_title}</h4>
               </div>
-              <button onClick={() => setSelectedRecord(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition">
+              <button onClick={closeReviewPanel} className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
@@ -263,7 +274,7 @@ export default function StudentProjectModule({ records = [], isReadOnly, current
             </div>
 
             <div className="flex justify-end pt-3 border-t border-slate-100">
-              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition">Close Review Panel</button>
+              <button type="button" onClick={closeReviewPanel} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition">Close Review Panel</button>
             </div>
           </div>
         </div>
@@ -309,8 +320,8 @@ export default function StudentProjectModule({ records = [], isReadOnly, current
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Verification Report / Certificate Proof (.jpg, .jpeg, .png)</label>
-                  <input type="file" accept="image/*" onChange={handleFileChange} required={!editingId} className="w-full text-sm px-3 py-1.5 border border-slate-200 bg-slate-50/50 rounded-xl file:mr-4 file:py-1 file:px-2.5 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Verification Report / Certificate Proof (.jpg, .jpeg, .png, .pdf)</label>
+                  <input type="file" accept="image/*,application/pdf" onChange={handleFileChange} required={!editingId} className="w-full text-sm px-3 py-1.5 border border-slate-200 bg-slate-50/50 rounded-xl file:mr-4 file:py-1 file:px-2.5 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all" />
                 </div>
               </div>
 

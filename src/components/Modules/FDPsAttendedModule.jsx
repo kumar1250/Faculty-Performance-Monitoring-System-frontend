@@ -61,7 +61,7 @@ export default function FDPsAttendedModule({ records = [], isReadOnly, currentUs
         return;
       }
       try {
-        const response = await API.get(`/fdp/fdp/${selectedRecord.id}/file/`);
+        const response = await API.get(`/fdps-attend/fdp/${selectedRecord.id}/file/`);
         setSecureFileUrl(response.data.certificate_url);
       } catch (err) {
         console.error("Asset pipeline failed:", err);
@@ -79,15 +79,28 @@ export default function FDPsAttendedModule({ records = [], isReadOnly, currentUs
     data.append('title', formData.title);
     data.append('category', formData.category);
     data.append('institute', formData.institute);
-    data.append('level', formData.level); // Now correctly appended
+    data.append('level', formData.level);
     if (formData.category === 'FDP') data.append('duration', formData.duration);
     
+    // Explicit client-side user identification logic
+    let userId = null;
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      data.append('user', record.user);
+      userId = record?.user && typeof record.user === 'object' ? record.user.id : record?.user;
     } else {
-      data.append('user', currentUserId);
+      if (currentUserId) {
+        userId = currentUserId;
+      } else if (records.length > 0 && records[0].user) {
+        userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+      }
     }
+
+    // Mapping both structural lookup variations to remain platform-agnostic on parsing operations
+    if (userId) {
+      data.append('user', userId);
+      data.append('user_id', userId);
+    }
+
     if (formData.certificate_file) data.append('certificate_file', formData.certificate_file);
 
     try {
@@ -113,7 +126,7 @@ export default function FDPsAttendedModule({ records = [], isReadOnly, currentUs
     e.stopPropagation();
     if (!window.confirm('Are you sure?')) return;
     try {
-      await API.delete(`/fdp/fdp/${id}/delete/`);
+      await API.delete(`/fdps-attend/fdp/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete.');

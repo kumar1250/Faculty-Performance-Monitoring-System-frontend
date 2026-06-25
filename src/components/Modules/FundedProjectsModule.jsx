@@ -66,23 +66,31 @@ export default function FundedProjectsModule({ records = [], isReadOnly, current
       completion_date: formData.completion_date || null
     };
 
+    // Explicit client-side user extraction logic
+    let userId = null;
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      payload.user = record.user; //
+      userId = record?.user && typeof record.user === 'object' ? record.user.id : record?.user;
     } else {
-      if (records.length > 0 && records[0].user) {
-        payload.user = records[0].user;
-      } else if (currentUserId) {
-        payload.user = currentUserId;
+      if (currentUserId) {
+        userId = currentUserId;
+      } else if (records.length > 0 && records[0].user) {
+        userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
       }
     }
 
-  try {
+    // Mapping both variations to comply with relational lookups safely on the server
+    if (userId) {
+      payload.user = userId;
+      payload.user_id = userId;
+    }
+
+    try {
       if (editingId) {
         // Hits PUT /funded/<id>/update
-        await API.put(`/funded/funded-projects/${editingId}/update`, payload);
+        await API.put(`/funded/funded-projects/${editingId}/update/`, payload);
       } else {
-        // Hits POST /funded/create/[cite: 14]
+        // Hits POST /funded/create/
         await API.post('/funded/funded-projects/create/', payload);
       }
       setIsOpen(false);
@@ -98,8 +106,8 @@ export default function FundedProjectsModule({ records = [], isReadOnly, current
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to remove this funded project entry?')) return;
     try {
-      // Hits DELETE /funded/<id>/delete[cite: 14]
-      await API.delete(`/funded/funded-projects/${id}/delete`);
+      // Hits DELETE /funded/<id>/delete
+      await API.delete(`/funded/funded-projects/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete research project entry.');
@@ -216,7 +224,7 @@ export default function FundedProjectsModule({ records = [], isReadOnly, current
 
             {selectedRecord.remarks && (
               <div className="bg-amber-50/50 border border-amber-200/60 rounded-xl p-4 text-sm space-y-1">
-                <h5 className="font-bold text-amber-900">HOD Evaluation Remarks[cite: 14]</h5>
+                <h5 className="font-bold text-amber-900">HOD Evaluation Remarks</h5>
                 <p className="text-amber-800"><strong className="font-semibold text-amber-900">Feedback:</strong> {selectedRecord.remarks}</p>
                 {selectedRecord.approved_by && <p className="text-xs text-amber-700/80 font-medium">Evaluated By: {selectedRecord.approved_by}</p>}
               </div>
@@ -238,44 +246,44 @@ export default function FundedProjectsModule({ records = [], isReadOnly, current
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Funded Project Title[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Funded Project Title</label>
                   <input type="text" name="project_title" required value={formData.project_title} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none" />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Sponsoring Funding Agency[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Sponsoring Funding Agency</label>
                   <input type="text" name="funding_agency" required value={formData.funding_agency} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Grant Total Value (INR)[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Grant Total Value (INR)</label>
                   <input type="number" name="grant_amount" required value={formData.grant_amount} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Grant Allocation Value Bracket[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Grant Allocation Value Bracket</label>
                   <select name="grant_category" value={formData.grant_category} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
-                    <option value="gt_10">More than 10 Lakhs Value[cite: 14]</option>
-                    <option value="5_10">5 to 10 Lakhs Value[cite: 14]</option>
-                    <option value="lt_5">Less than 5 Lakhs Value[cite: 14]</option>
+                    <option value="gt_10">More than 10 Lakhs Value</option>
+                    <option value="5_10">5 to 10 Lakhs Value</option>
+                    <option value="lt_5">Less than 5 Lakhs Value</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Investigator Designation Capacity[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Investigator Designation Capacity</label>
                   <select name="investigator_role" value={formData.investigator_role} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
-                    <option value="pi">Principal Investigator (PI)[cite: 14]</option>
-                    <option value="co_pi">Co-Principal Investigator (Co-PI)[cite: 14]</option>
+                    <option value="pi">Principal Investigator (PI)</option>
+                    <option value="co_pi">Co-Principal Investigator (Co-PI)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Sanction Issued Date[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Sanction Issued Date</label>
                   <input type="date" name="sanction_date" required value={formData.sanction_date} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none" />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Project Completion Date (Leave Blank if Ongoing)[cite: 14]</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Project Completion Date (Leave Blank if Ongoing)</label>
                   <input type="date" name="completion_date" value={formData.completion_date} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none" />
                 </div>
               </div>

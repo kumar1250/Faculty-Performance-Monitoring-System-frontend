@@ -57,7 +57,7 @@ export default function PatentModule({ records = [], isReadOnly, currentUserId, 
       }
       try {
         // Hits backend: GET /patents/<id>/file (No trailing slash)
-        const response = await API.get(`/patents/${selectedRecord.id}/file`);
+        const response = await API.get(`/patents/${selectedRecord.id}/file/`);
         setSecureFileUrl(response.data.certificate_url);
       } catch (err) {
         console.error("Asset pipeline failed to resolve file source:", err);
@@ -77,15 +77,19 @@ export default function PatentModule({ records = [], isReadOnly, currentUserId, 
     data.append('patent_type', formData.patent_type);
     
     if (editingId) {
-      const record = records.find(r => r.id === editingId);
-      data.append('user', record.user); // Required explicitly by backend update schema validation
-    } else {
-      if (records.length > 0 && records[0].user) {
-        data.append('user', records[0].user);
-      } else if (currentUserId) {
-        data.append('user', currentUserId);
-      }
-    }
+  const record = records.find(r => r.id === editingId);
+  
+  // Extract the numerical ID if record.user is an object, otherwise use it directly
+  const userId = record.user && typeof record.user === 'object' ? record.user.id : record.user;
+  data.append('user', userId); 
+} else {
+  if (records.length > 0 && records[0].user) {
+    const userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+    data.append('user', userId);
+  } else if (currentUserId) {
+    data.append('user', currentUserId);
+  }
+}
 
     if (formData.certificate_file) {
       data.append('certificate_file', formData.certificate_file);
@@ -94,7 +98,7 @@ export default function PatentModule({ records = [], isReadOnly, currentUserId, 
     try {
       if (editingId) {
         // Hits PUT /patents/<id>/update (No trailing slash)
-        await API.put(`/patents/${editingId}/update`, data, {
+        await API.put(`/patents/${editingId}/update/`, data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
@@ -117,7 +121,7 @@ export default function PatentModule({ records = [], isReadOnly, currentUserId, 
     if (!window.confirm('Are you sure you want to remove this patent milestone?')) return;
     try {
       // Hits DELETE /patents/<id>/delete (No trailing slash)
-      await API.delete(`/patents/${id}/delete`);
+      await API.delete(`/patents/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete patent entry.');

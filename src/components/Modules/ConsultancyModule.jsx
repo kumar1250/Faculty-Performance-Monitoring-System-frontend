@@ -72,11 +72,23 @@ export default function ConsultancyModule({ records = [], isReadOnly, currentUse
     data.append('amount', formData.amount);
     data.append('position', formData.position);
     
+    // Explicit client-side user identification logic
+    let userId = null;
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      data.append('user', record.user);
+      userId = record?.user && typeof record.user === 'object' ? record.user.id : record?.user;
     } else {
-      data.append('user', currentUserId);
+      if (currentUserId) {
+        userId = currentUserId;
+      } else if (records.length > 0 && records[0].user) {
+        userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+      }
+    }
+
+    // Appending both structural options to map to server schema lookups safely
+    if (userId) {
+      data.append('user', userId);
+      data.append('user_id', userId);
     }
 
     if (formData.certificate_file) {

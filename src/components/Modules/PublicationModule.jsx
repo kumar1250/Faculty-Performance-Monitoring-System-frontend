@@ -74,7 +74,6 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
         return;
       }
       try {
-        // ✅ Corrected: Maps to /conference/publications/<id>/file/ layout
         const response = await API.get(`/conference/publications/${selectedRecord.id}/file/`);
         setSecureFileUrl(response.data.certificate_url);
       } catch (err) {
@@ -97,16 +96,23 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
     data.append('publisher_name', formData.publisher_name);
     data.append('publication_date', formData.publication_date);
     
-    // Explicit user tracking attachment parameters to meet backend requirements
+    // Explicit client-side user identification logic
+    let userId = null;
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      data.append('user', record.user);
+      userId = record?.user && typeof record.user === 'object' ? record.user.id : record?.user;
     } else {
-      if (records.length > 0 && records[0].user) {
-        data.append('user', records[0].user);
-      } else if (currentUserId) {
-        data.append('user', currentUserId);
+      if (currentUserId) {
+        userId = currentUserId;
+      } else if (records.length > 0 && records[0].user) {
+        userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
       }
+    }
+
+    // Mapping both structural lookup variations to remain platform-agnostic on parsing operations
+    if (userId) {
+      data.append('user', userId);
+      data.append('user_id', userId);
     }
 
     if (formData.certificate_file) {
@@ -115,12 +121,10 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
 
     try {
       if (editingId) {
-        // ✅ Corrected: Hits PUT /conference/publications/<id>/update/
         await API.put(`/conference/publications/${editingId}/update/`, data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
-        // ✅ Corrected: Hits POST /conference/publications/publication/
         await API.post('/conference/publications/publication/', data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
@@ -138,7 +142,6 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
     e.stopPropagation();
     if (!window.confirm('Are you absolutely sure you want to remove this publication record?')) return;
     try {
-      // ✅ Corrected: Hits DELETE /conference/publications/<id>/delete/
       await API.delete(`/conference/publications/${id}/delete/`);
       onRefresh();
     } catch (err) {
@@ -218,7 +221,7 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full p-6 space-y-6 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start border-b border-slate-100 pb-3">
               <div>
-                <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">Evaluation Audit View</span>
+                <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">Publication Review</span>
                 <h4 className="text-xl font-black text-slate-900 mt-1">{selectedRecord.title}</h4>
               </div>
               <button onClick={() => setSelectedRecord(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition">
@@ -228,28 +231,20 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm border-b border-slate-100 pb-5">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Publisher Name</span>
-                <strong className="text-slate-800 text-base mt-0.5 block">{selectedRecord.publisher_name || 'N/A'}</strong>
+                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Publication Stream Type</span>
+                <strong className="text-slate-800 text-base mt-0.5 block uppercase">{selectedRecord.publication_type?.replace('_', ' ')}</strong>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Publication Type</span>
-                <strong className="text-slate-800 text-base mt-0.5 block capitalize">{selectedRecord.publication_type?.toLowerCase().replace('_', ' ')}</strong>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Indexing Categorization</span>
+                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Indexing Metric Status</span>
                 <strong className="text-slate-800 text-base mt-0.5 block uppercase">{selectedRecord.indexing_type?.replace('_', ' ')}</strong>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Author Ownership Role</span>
-                <strong className="text-slate-800 text-base mt-0.5 block capitalize">{selectedRecord.author_type?.toLowerCase().replace('_', ' ')}</strong>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Publication Date</span>
-                <strong className="text-slate-800 text-base mt-0.5 block">{selectedRecord.publication_date}</strong>
+                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Author Role Allocation</span>
+                <strong className="text-slate-800 text-base mt-0.5 block uppercase">{selectedRecord.author_type?.replace('_', ' ')}</strong>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center">
                 <div>
-                  <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Audit Appraisal Status</span>
+                  <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Appraisal Status</span>
                   <strong className="text-slate-800 text-base mt-0.5 block capitalize">{selectedRecord.approval_status}</strong>
                 </div>
                 {selectedRecord.approval_status === 'approved' && (
@@ -260,37 +255,37 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
 
             {selectedRecord.message && (
               <div className="bg-amber-50/50 border border-amber-200/60 rounded-xl p-4 text-sm space-y-1">
-                <h5 className="font-bold text-amber-900">Evaluation Review Backlog Remarks</h5>
-                <p className="text-amber-800"><strong className="font-semibold text-amber-900">Message Note:</strong> {selectedRecord.message}</p>
-                {selectedRecord.approved_by && <p className="text-xs text-amber-700/80 font-medium">Evaluated By Session Parameter: {selectedRecord.approved_by}</p>}
+                <h5 className="font-bold text-amber-900">Evaluation Remarks Feed</h5>
+                <p className="text-amber-800"><strong className="font-semibold text-amber-900">Message:</strong> {selectedRecord.message}</p>
+                {selectedRecord.approved_by && <p className="text-xs text-amber-700/80 font-medium">Evaluated By: {selectedRecord.approved_by}</p>}
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">Uploaded Document Proof</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">Uploaded Validation Proof Document</label>
               {selectedRecord.certificate_file ? (
                 <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-900 h-[280px] flex flex-col justify-center items-center relative group/file">
                   {secureFileUrl ? (
-                    <iframe src={secureFileUrl} className="w-full h-full border-0 bg-white" title="Publication Verification Document Preview" />
+                    <iframe src={secureFileUrl} className="w-full h-full border-0 bg-white" title="Proof Document Preview" />
                   ) : (
                     <div className="text-white text-xs flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Resolving secure file connection layer...</span>
+                      <span>Resolving secure token validation content...</span>
                     </div>
                   )}
                   {secureFileUrl && (
-                    <div className="absolute bottom-3 right-3 opacity-90 hover:opacity-100 transition-opacity">
-                      <a href={secureFileUrl} target="_blank" rel="noreferrer" className="bg-slate-900/90 text-white border border-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-lg backdrop-blur-sm">Open in New Tab</a>
+                    <div className="absolute bottom-3 right-3">
+                      <a href={secureFileUrl} target="_blank" rel="noreferrer" className="bg-slate-900/90 text-white border border-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg backdrop-blur-sm">Open in New Tab</a>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="border border-dashed border-slate-200 bg-slate-50 text-slate-400 italic text-xs py-8 rounded-xl text-center">No publication validation asset linked onto this item instance structure.</div>
+                <div className="border border-dashed border-slate-200 bg-slate-50 text-slate-400 italic text-xs py-8 rounded-xl text-center">No structural proof asset linked onto this descriptor.</div>
               )}
             </div>
 
             <div className="flex justify-end pt-3 border-t border-slate-100">
-              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">Close Audit View</button>
+              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">Close Review Panel</button>
             </div>
           </div>
         </div>
@@ -299,60 +294,60 @@ export default function PublicationModule({ records = [], isReadOnly, currentUse
       {/* INPUT FORM MODAL WINDOW */}
       {isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <h4 className="text-lg font-bold text-slate-900">{editingId ? 'Modify Publication Record' : 'Log New Research Publication'}</h4>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h4 className="text-lg font-bold text-slate-900">{editingId ? 'Modify Publication Record' : 'Log Research Publication Track'}</h4>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publication Title</label>
-                  <input type="text" name="title" required value={formData.title} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" placeholder="e.g., Automated Testing on Large Language Agent Pipelines" />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publisher Name</label>
-                  <input type="text" name="publisher_name" required value={formData.publisher_name} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" placeholder="e.g., IEEE Explore" />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publication Date</label>
-                  <input type="date" name="publication_date" required value={formData.publication_date} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publication Category Type</label>
-                  <select name="publication_type" value={formData.publication_type} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium text-slate-700">
-                    <option value="PROCEEDING">PROCEEDING (Conference Paper)</option>
-                    <option value="BOOK_CHAPTER">BOOK CHAPTER</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Indexing Tier</label>
-                  <select name="indexing_type" value={formData.indexing_type} disabled={formData.publication_type === 'BOOK_CHAPTER'} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium text-slate-700 disabled:bg-slate-100 disabled:opacity-75">
-                    <option value="IEEE_SPRINGER_ELSEVIER">IEEE / SPRINGER / ELSEVIER</option>
-                    <option value="SCOPUS">SCOPUS INDEXED ONLY</option>
-                  </select>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Manuscript Paper Title</label>
+                  <input type="text" name="title" required value={formData.title} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" placeholder="e.g., Secure Decentralized Storage Topologies" />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Author Ownership Assignment</label>
-                  <select name="author_type" value={formData.author_type} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium text-slate-700">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publisher Name</label>
+                  <input type="text" name="publisher_name" required value={formData.publisher_name} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" placeholder="e.g., IEEE Computer Society, Springer Nature" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publication Stream Type</label>
+                  <select name="publication_type" value={formData.publication_type} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
+                    <option value="PROCEEDING">Conference Proceeding</option>
+                    <option value="BOOK_CHAPTER">Book Chapter Track</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Indexing Metric Tier</label>
+                  <select name="indexing_type" value={formData.indexing_type} onChange={handleInputChange} disabled={formData.publication_type === 'BOOK_CHAPTER'} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700 disabled:opacity-60">
+                    <option value="IEEE_SPRINGER_ELSEVIER">IEEE / Springer / Elsevier</option>
+                    <option value="SCOPUS">Other Scopus Indexed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Publication Issued Date</label>
+                  <input type="date" name="publication_date" required value={formData.publication_date} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Author Credit Attribution</label>
+                  <select name="author_type" value={formData.author_type} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
                     <option value="FIRST_AUTHOR">FIRST AUTHOR</option>
                     <option value="CO_AUTHOR">CO-AUTHOR</option>
                   </select>
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Verification Proof (.jpg, .jpeg, .png, .webp)</label>
-                  <input type="file" accept="image/*" onChange={handleFileChange} required={!editingId} className="w-full text-sm px-3 py-1.5 border border-slate-200 bg-slate-50/50 rounded-xl file:mr-4 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Verification Proof Asset (.jpg, .jpeg, .png, .webp)</label>
+                  <input type="file" accept="image/*" onChange={handleFileChange} required={!editingId} className="w-full text-sm px-3 py-1.5 border border-slate-200 bg-slate-50/50 rounded-xl file:mr-4 file:py-1 file:px-2.5 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all" />
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button type="button" onClick={() => setIsOpen(false)} className="px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition">Cancel</button>
                 <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition disabled:opacity-50">
-                  {loading ? 'Saving Publication Record...' : 'Save Publication Entry'}
+                  {loading ? 'Saving Publication...' : 'Save Activity Entry'}
                 </button>
               </div>
             </form>

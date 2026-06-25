@@ -60,7 +60,7 @@ export default function ResearchGuidanceModule({ records = [], isReadOnly, curre
     
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      payload.user = record.user; // Required explicitly by backend updates validator schema
+      payload.user = typeof record.user === 'object' ? record.user.id : record.user; // Required explicitly by backend updates validator schema
     } else {
       if (records.length > 0 && records[0].user) {
         payload.user = records[0].user;
@@ -72,7 +72,7 @@ export default function ResearchGuidanceModule({ records = [], isReadOnly, curre
     try {
       if (editingId) {
         // Hits PUT /research/research/<id>/update (No trailing slash)
-        await API.put(`/research/research/${editingId}/update`, payload);
+        await API.put(`/research/research/${editingId}/update/`, payload);
       } else {
         // Hits POST /research/research/guidance/ (With trailing slash)
         await API.post('/research/research/guidance/', payload);
@@ -91,7 +91,7 @@ export default function ResearchGuidanceModule({ records = [], isReadOnly, curre
     if (!window.confirm('Are you sure you want to remove this research guidance record?')) return;
     try {
       // Hits DELETE /research/research/<id>/delete (No trailing slash)
-      await API.delete(`/research/research/${id}/delete`);
+      await API.delete(`/research/research/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete research guidance entry.');

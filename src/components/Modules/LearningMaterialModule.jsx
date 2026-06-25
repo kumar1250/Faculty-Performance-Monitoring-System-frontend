@@ -51,20 +51,21 @@ export default function LearningMaterialModule({ records = [], isReadOnly, curre
     };
     
     if (editingId) {
-      const record = records.find(r => r.id === editingId);
-      payload.user = record.user; // Binds required dynamic updates payload[cite: 18]
-    } else {
-      if (records.length > 0 && records[0].user) {
-        payload.user = records[0].user;
-      } else if (currentUserId) {
-        payload.user = currentUserId;
-      }
-    }
-
+  const record = records.find(r => r.id === editingId);
+  // FIX: Safely parse numerical ID if record.user is an object
+  payload.user = record.user && typeof record.user === 'object' ? record.user.id : record.user; 
+} else {
+  if (records.length > 0 && records[0].user) {
+    // FIX: Apply the same object parsing check here
+    payload.user = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+  } else if (currentUserId) {
+    payload.user = currentUserId;
+  }
+}
     try {
       if (editingId) {
         // Hits PUT /learning/learning-material/<id>/update (No trailing slash)
-        await API.put(`/learning/learning-material/${editingId}/update`, payload);
+        await API.put(`/learning/learning-material/${editingId}/update/`, payload);
       } else {
         // Hits POST /learning/learning-material/contribution/ (With trailing slash)[cite: 17, 18]
         await API.post('/learning/learning-material/contribution/', payload);
@@ -83,7 +84,7 @@ export default function LearningMaterialModule({ records = [], isReadOnly, curre
     if (!window.confirm('Are you sure you want to remove this course contribution entry?')) return;
     try {
       // Hits DELETE /learning/learning-material/<id>/delete (No trailing slash)[cite: 17, 18]
-      await API.delete(`/learning/learning-material/${id}/delete`);
+      await API.delete(`/learning/learning-material/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete subject entry.');

@@ -94,26 +94,30 @@ export default function ChairingSessionModule({ records = [], isReadOnly, curren
     data.append('event_date', formData.event_date);
     
     if (editingId) {
-      const record = records.find(r => r.id === editingId);
-      data.append('user', record.user); // Required explicitly by backend update validations[cite: 25]
-    } else {
-      if (records.length > 0 && records[0].user) {
-        data.append('user', records[0].user);
-      } else if (currentUserId) {
-        data.append('user', currentUserId);
-      }
-    }
-
+  const record = records.find(r => r.id === editingId);
+  
+  // If record.user is an object, extract its ID. Otherwise, use it directly.
+  const userId = record.user && typeof record.user === 'object' ? record.user.id : record.user;
+  data.append('user', userId); 
+} else {
+  if (records.length > 0 && records[0].user) {
+    const userId = typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+    data.append('user', userId);
+  } else if (currentUserId) {
+    data.append('user', currentUserId);
+  }
+}
     if (formData.certificate_file) {
       data.append('certificate_file', formData.certificate_file);
     }
 
     try {
       if (editingId) {
-        // Hits PUT /session/chairing/<id>/update[cite: 1, 24, 25]
-        await API.put(`/session/chairing/${editingId}/update`, data, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+          // Hits PUT /session/chairing/<id>/update/ 
+          await API.put(`/session/chairing/${editingId}/update/`, data, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+        
       } else {
         // Hits POST /session/chairing/session/[cite: 1, 24, 25]
         await API.post('/session/chairing/session/', data, {
@@ -134,7 +138,7 @@ export default function ChairingSessionModule({ records = [], isReadOnly, curren
     if (!window.confirm('Are you sure you want to remove this lecture/session record?')) return;
     try {
       // Hits DELETE /session/chairing/<id>/delete[cite: 1, 24, 25]
-      await API.delete(`/session/chairing/${id}/delete`);
+      await API.delete(`/session/chairing/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete session entry.');

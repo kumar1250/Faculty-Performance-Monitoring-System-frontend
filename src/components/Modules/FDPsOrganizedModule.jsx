@@ -88,9 +88,28 @@ export default function FDPsOrganizedModule({ records = [], isReadOnly, currentU
     if (formData.activity_type === 'FDP') {
         data.append('duration', formData.duration);
     }
-    data.append('user', currentUserId); // Ensure this is a valid ID
+    
+    // Explicit client-side user identification logic
+    let userId = null;
+    if (editingId) {
+      const record = records.find(r => r.id === editingId);
+      userId = record?.user && typeof record.user === 'object' ? record.user.id : record?.user;
+    } else {
+      if (currentUserId) {
+        userId = currentUserId;
+      } else if (records.length > 0 && records[0].user) {
+        userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+      }
+    }
+
+    // Mapping both structural lookup variations to remain platform-agnostic on parsing operations
+    if (userId) {
+      data.append('user', userId);
+      data.append('user_id', userId);
+    }
+
     if (formData.certificate_file) {
-        data.append('certificate_file', formData.certificate_file); // Ensure this matches what your View expects
+        data.append('certificate_file', formData.certificate_file); 
     }
     try {
       if (editingId) {
@@ -124,6 +143,7 @@ export default function FDPsOrganizedModule({ records = [], isReadOnly, currentU
       alert('Failed to delete.');
     }
   };
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-[0_4px_12px_rgba(0,0,0,0.02)] p-6 space-y-4 font-sans mt-6">
       <div className="flex justify-between items-center border-b border-slate-100 pb-3">

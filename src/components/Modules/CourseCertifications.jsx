@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import API from '../../api/axios';
 
-// Added currentUserId fallback parameter to props for schema validation matching
 export default function CourseCertifications({ records = [], isReadOnly, currentUserId, onRefresh }) {
   const [secureFileUrl, setSecureFileUrl] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -34,7 +33,7 @@ export default function CourseCertifications({ records = [], isReadOnly, current
       certificate_type: 'NPTEL',
       certificate_file: null
     });
-    setIsOpen(true); // Call setIsOpen status function cleanly
+    setIsOpen(true);
   };
 
   const openEditModal = (e, record) => {
@@ -56,7 +55,6 @@ export default function CourseCertifications({ records = [], isReadOnly, current
         return;
       }
       try {
-        // Corrected: Hits backend GET /course/course/<id>/file/ with Auth headers
         const response = await API.get(`/course/course/${selectedRecord.id}/file/`);
         setSecureFileUrl(response.data.certificate_url);
       } catch (err) {
@@ -75,16 +73,23 @@ export default function CourseCertifications({ records = [], isReadOnly, current
     data.append('Course_name', formData.Course_name);
     data.append('certificate_type', formData.certificate_type);
     
+    // Explicit client-side user identification logic
+    let userId = null;
     if (editingId) {
       const record = records.find(r => r.id === editingId);
-      data.append('user', record.user); // Required explicitly by backend update schema
+      userId = record?.user && typeof record.user === 'object' ? record.user.id : record?.user;
     } else {
-      // For a new entry, parse the valid backend User DB Primary Key
-      if (records.length > 0 && records[0].user) {
-        data.append('user', records[0].user);
-      } else if (currentUserId) {
-        data.append('user', currentUserId);
+      if (currentUserId) {
+        userId = currentUserId;
+      } else if (records.length > 0 && records[0].user) {
+        userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
       }
+    }
+
+    // Mapping both structural lookup variations to remain platform-agnostic on parsing operations
+    if (userId) {
+      data.append('user', userId);
+      data.append('user_id', userId);
     }
 
     if (formData.certificate_file) {
@@ -93,12 +98,10 @@ export default function CourseCertifications({ records = [], isReadOnly, current
 
     try {
       if (editingId) {
-        // Hits PUT /course/course/<id>/update/
         await API.put(`/course/course/${editingId}/update/`, data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
-        // Hits POST /course/course/course/
         await API.post('/course/course/course/', data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
@@ -116,7 +119,6 @@ export default function CourseCertifications({ records = [], isReadOnly, current
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to remove this course certification entry?')) return;
     try {
-      // Hits DELETE /course/course/<id>/delete/
       await API.delete(`/course/course/${id}/delete/`);
       onRefresh();
     } catch (err) {
@@ -192,12 +194,9 @@ export default function CourseCertifications({ records = [], isReadOnly, current
       {selectedRecord && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full p-6 space-y-6 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            
             <div className="flex justify-between items-start border-b border-slate-100 pb-3">
               <div>
-                <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">
-                  Certification Audit View
-                </span>
+                <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">Certification File Review</span>
                 <h4 className="text-xl font-black text-slate-900 mt-1">{selectedRecord.Course_name}</h4>
               </div>
               <button onClick={() => setSelectedRecord(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition">
@@ -207,12 +206,12 @@ export default function CourseCertifications({ records = [], isReadOnly, current
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm border-b border-slate-100 pb-5">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Certification Authority Type</span>
+                <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Evaluation Stream</span>
                 <strong className="text-slate-800 text-base mt-0.5 block uppercase">{selectedRecord.certificate_type}</strong>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center">
                 <div>
-                  <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Appraisal Status / Points Issued</span>
+                  <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">Appraisal Status</span>
                   <strong className="text-slate-800 text-base mt-0.5 block capitalize">{selectedRecord.approval_status}</strong>
                 </div>
                 {selectedRecord.approval_status === 'approved' && (
@@ -221,58 +220,40 @@ export default function CourseCertifications({ records = [], isReadOnly, current
               </div>
             </div>
 
-            {(selectedRecord.message || selectedRecord.approved_by) && (
+            {selectedRecord.message && (
               <div className="bg-amber-50/50 border border-amber-200/60 rounded-xl p-4 text-sm space-y-1">
-                <h5 className="font-bold text-amber-900 flex items-center gap-1.5">
-                  Evaluation Feedback Remarks
-                </h5>
-                <p className="text-amber-800"><strong className="font-semibold text-amber-900">Message:</strong> {selectedRecord.message || 'No specific feedback message submitted.'}</p>
-                {selectedRecord.approved_by && <p className="text-xs text-amber-700/80 font-medium">Evaluated by: {selectedRecord.approved_by}</p>}
+                <h5 className="font-bold text-amber-900">Evaluation Remarks Feed</h5>
+                <p className="text-amber-800"><strong className="font-semibold text-amber-900">Message:</strong> {selectedRecord.message}</p>
+                {selectedRecord.approved_by && <p className="text-xs text-amber-700/80 font-medium">Evaluated By: {selectedRecord.approved_by}</p>}
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">Uploaded Certificate Proof Document</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">Uploaded Validation Proof Document</label>
               {selectedRecord.certificate_file ? (
                 <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-900 h-[280px] flex flex-col justify-center items-center relative group/file">
                   {secureFileUrl ? (
-                    <iframe 
-                      src={secureFileUrl} 
-                      className="w-full h-full border-0 bg-white"
-                      title="Course Certificate Preview"
-                    />
+                    <iframe src={secureFileUrl} className="w-full h-full border-0 bg-white" title="Proof Document Preview" />
                   ) : (
                     <div className="text-white text-xs flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Loading secure file layer...</span>
+                      <span>Resolving secure token validation content...</span>
                     </div>
                   )}
                   {secureFileUrl && (
-                    <div className="absolute bottom-3 right-3 opacity-90 hover:opacity-100 transition-opacity">
-                      <a 
-                        href={secureFileUrl} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="bg-slate-900/90 text-white border border-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-lg backdrop-blur-sm"
-                      >
-                        Open in New Tab
-                      </a>
+                    <div className="absolute bottom-3 right-3">
+                      <a href={secureFileUrl} target="_blank" rel="noreferrer" className="bg-slate-900/90 text-white border border-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg backdrop-blur-sm">Open in New Tab</a>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="border border-dashed border-slate-200 bg-slate-50 text-slate-400 italic text-xs py-8 rounded-xl text-center">
-                  No certification validation upload linked onto this entry structure.
-                </div>
+                <div className="border border-dashed border-slate-200 bg-slate-50 text-slate-400 italic text-xs py-8 rounded-xl text-center">No structural proof asset linked onto this descriptor.</div>
               )}
             </div>
 
             <div className="flex justify-end pt-3 border-t border-slate-100">
-              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">
-                Close Audit View
-              </button>
+              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">Close Review Panel</button>
             </div>
-
           </div>
         </div>
       )}
@@ -280,34 +261,34 @@ export default function CourseCertifications({ records = [], isReadOnly, current
       {/* INPUT FORM MODAL WINDOW */}
       {isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <h4 className="text-lg font-bold text-slate-900">{editingId ? 'Modify Course Record' : 'Log Completed Course Certification'}</h4>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h4 className="text-lg font-bold text-slate-900">{editingId ? 'Modify Certification Record' : 'Log Completed Online Course'}</h4>
             
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Course Name Title</label>
-                <input type="text" name="Course_name" required value={formData.Course_name} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" placeholder="e.g., Deep Learning with PyTorch Mastery" />
-              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Course Name Title</label>
+                  <input type="text" name="Course_name" required value={formData.Course_name} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" placeholder="e.g., Introduction to Machine Learning" />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Certification Authority Category</label>
-                <select name="certificate_type" value={formData.certificate_type} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium text-slate-700">
-                  <option value="NPTEL">NPTEL Certified Track</option>
-                  <option value="OTHER">OTHER Global Certification / Coursera / Udemy</option>
-                </select>
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Certification Track Type</label>
+                  <select name="certificate_type" value={formData.certificate_type} onChange={handleInputChange} className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
+                    <option value="NPTEL">NPTEL Certified Track</option>
+                    <option value="OTHER">OTHER Global Certification / Coursera / Udemy</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Upload Certificate File Proof (Image Asset Only)</label>
-                <input type="file" accept="image/*" onChange={handleFileChange} required={!editingId} className="w-full text-sm px-3 py-1.5 border border-slate-200 bg-slate-50/50 rounded-xl file:mr-4 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all" />
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Upload Certificate File Proof (Image Asset Only)</label>
+                  <input type="file" accept="image/*" onChange={handleFileChange} required={!editingId} className="w-full text-sm px-3 py-1.5 border border-slate-200 bg-slate-50/50 rounded-xl file:mr-4 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all" />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setIsOpen(false)} className="px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition">
-                  Cancel
-                </button>
+                <button type="button" onClick={() => setIsOpen(false)} className="px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition">Cancel</button>
                 <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition disabled:opacity-50">
-                  {loading ? 'Saving Certification...' : 'Save Certification Entry'}
+                  {loading ? 'Saving Certification...' : 'Save Activity Entry'}
                 </button>
               </div>
             </form>

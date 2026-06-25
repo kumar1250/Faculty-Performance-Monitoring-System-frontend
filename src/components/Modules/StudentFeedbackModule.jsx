@@ -114,11 +114,22 @@ function FacultyPicker({ value, onChange }) {
 }
 
 // ── Main Module ────────────────────────────────────────────────────────────────
-export default function StudentFeedbackModule({ records = [], isReadOnly, currentUserId, onRefresh, facultyName = '', viewerRole = '' }) {
+export default function StudentFeedbackModule({
+  records = [],
+  isReadOnly,
+  currentUserId,
+  onRefresh,
+  facultyName = '',
+  viewerRole = '',
+}) {
   const [isOpen, setIsOpen]                 = useState(false);
   const [editingId, setEditingId]           = useState(null);
   const [loading, setLoading]               = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
+
+  // Editing/deleting allowed when viewing own profile OR when viewer is HOD/Dean/Principal
+  const PRIVILEGED_ROLES = ['hod', 'dean', 'principal', 'department_incharge'];
+  const canModify = !isReadOnly || PRIVILEGED_ROLES.includes(viewerRole);
 
   // { userId, registerNo, username }
   const [selectedFaculty, setSelectedFaculty] = useState(null);
@@ -129,7 +140,7 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
     cycle_1_feedback: 'excellent',
     cycle_2_feedback: 'excellent',
     exam_result:      'ge_90',
-    message:          ''
+    message:          '',
   });
 
   const handleInputChange = (e) => {
@@ -147,7 +158,7 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
       cycle_1_feedback: 'excellent',
       cycle_2_feedback: 'excellent',
       exam_result:      'ge_90',
-      message:          ''
+      message:          '',
     });
     setIsOpen(true);
   };
@@ -156,8 +167,6 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
     e.stopPropagation();
     setEditingId(record.id);
 
-    // FIX: record.user is the full UserSerializer object { id, username, register_no, ... }
-    // NOT a plain integer PK. Extract .id, .register_no, .username from it.
     setSelectedFaculty(
       record.user
         ? {
@@ -174,7 +183,7 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
       cycle_1_feedback: record.cycle_1_feedback || 'excellent',
       cycle_2_feedback: record.cycle_2_feedback || 'excellent',
       exam_result:      record.exam_result      || 'ge_90',
-      message:          record.message          || ''
+      message:          record.message          || '',
     });
     setIsOpen(true);
   };
@@ -199,7 +208,6 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
     };
 
     if (editingId) {
-      // FIX: record.user is now a full object — use record.user.id, not record.user
       const record = records.find(r => r.id === editingId);
       payload.user = selectedFaculty?.userId || record?.user?.id;
     } else {
@@ -208,7 +216,8 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
 
     try {
       if (editingId) {
-        await API.put(`/feedback/student-feedback/${editingId}/update`, payload);
+        // FIX: trailing slash added — Django redirects without it, losing PUT body
+        await API.put(`/feedback/student-feedback/${editingId}/update/`, payload);
       } else {
         await API.post('/feedback/student-feedback/create/', payload);
       }
@@ -225,7 +234,8 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to remove this feedback performance record?')) return;
     try {
-      await API.delete(`/feedback/student-feedback/${id}/delete`);
+      // FIX: trailing slash added — Django redirects without it
+      await API.delete(`/feedback/student-feedback/${id}/delete/`);
       onRefresh();
     } catch {
       alert('Failed to delete performance entry.');
@@ -240,15 +250,17 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
         <div>
           <h3 className="text-lg font-bold text-slate-900">Theory Courses Handled (Student Feedback Performance)</h3>
           <p className="text-xs text-slate-500 mt-0.5">Track intermediate feedback metric indexes and exam passing distributions.</p>
-          {viewerRole === 'hod' && facultyName && (
+          {PRIVILEGED_ROLES.includes(viewerRole) && facultyName && (
             <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 rounded-lg">
               <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Faculty</span>
               <span className="text-xs font-bold text-indigo-700 capitalize">{facultyName}</span>
-              <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded-md uppercase tracking-wide">HOD View</span>
+              <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded-md uppercase tracking-wide">
+                {viewerRole.toUpperCase()} View
+              </span>
             </div>
           )}
         </div>
-        {!isReadOnly && (
+        {canModify && (
           <button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex-shrink-0 ml-4">
             + Log Course Performance
           </button>
@@ -269,13 +281,12 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">{record.subject_name}</p>
-                  {/* FIX: register_no now comes as a flat field from the serializer (source='user.register_no') */}
                   {record.register_no && (
                     <span className="text-[10px] font-black text-indigo-600 border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">
                       🆔 {record.register_no}
                     </span>
                   )}
-                  <span className="text-[10px] text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-white">View Full metrics</span>
+                  <span className="text-[10px] text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-white">View Full Metrics</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
                   <span>Year: <strong className="text-slate-700">{record.academic_year}</strong></span>
@@ -291,13 +302,25 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
                   </span>
                   <span className="text-xs font-bold text-blue-600">+{record.points} Points</span>
                 </div>
-                {!isReadOnly && (
+                {canModify && (
                   <div className="flex items-center gap-1">
-                    <button onClick={(e) => openEditModal(e, record)} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-white border border-transparent hover:border-slate-100 transition">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                    <button
+                      onClick={(e) => openEditModal(e, record)}
+                      className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-white border border-transparent hover:border-slate-100 transition"
+                      title="Edit record"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
                     </button>
-                    <button onClick={(e) => handleDelete(e, record.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-white border border-transparent hover:border-slate-100 transition">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <button
+                      onClick={(e) => handleDelete(e, record.id)}
+                      className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-white border border-transparent hover:border-slate-100 transition"
+                      title="Delete record"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                     </button>
                   </div>
                 )}
@@ -311,17 +334,19 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
       {selectedRecord && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full p-6 space-y-6 max-h-[90vh] overflow-y-auto">
+
             <div className="flex justify-between items-start border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">Feedback Audit View</span>
                 <h4 className="text-xl font-black text-slate-900 mt-1">{selectedRecord.subject_name}</h4>
-                {/* FIX: use flat register_no field from serializer */}
                 {selectedRecord.register_no && (
                   <p className="text-xs font-bold text-indigo-600 mt-0.5">🆔 Faculty: {selectedRecord.register_no}</p>
                 )}
               </div>
               <button onClick={() => setSelectedRecord(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
@@ -340,7 +365,9 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <span className="text-xs font-bold text-slate-400 block uppercase tracking-wide">University Exam Result Bracket</span>
-                <strong className="text-slate-800 text-base mt-0.5 block uppercase">{selectedRecord.exam_result?.replace('_', ' >= ')}%</strong>
+                <strong className="text-slate-800 text-base mt-0.5 block uppercase">
+                  {selectedRecord.exam_result?.replace('ge_', '>= ').replace('lt_', '< ')}%
+                </strong>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center sm:col-span-2">
                 <div>
@@ -359,7 +386,9 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
             )}
 
             <div className="flex justify-end pt-3">
-              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">Close Audit View</button>
+              <button type="button" onClick={() => setSelectedRecord(null)} className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">
+                Close Audit View
+              </button>
             </div>
           </div>
         </div>
@@ -393,20 +422,37 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Subject Name Title</label>
-                  <input type="text" name="subject_name" required value={formData.subject_name} onChange={handleInputChange}
-                    className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:border-blue-400 transition" />
+                  <input
+                    type="text"
+                    name="subject_name"
+                    required
+                    value={formData.subject_name}
+                    onChange={handleInputChange}
+                    className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:border-blue-400 transition"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Academic Year</label>
-                  <input type="text" name="academic_year" required value={formData.academic_year} onChange={handleInputChange}
-                    className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:border-blue-400 transition" placeholder="e.g., 2025-2026" />
+                  <input
+                    type="text"
+                    name="academic_year"
+                    required
+                    value={formData.academic_year}
+                    onChange={handleInputChange}
+                    className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:border-blue-400 transition"
+                    placeholder="e.g., 2025-2026"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Exam Pass Result Bracket</label>
-                  <select name="exam_result" value={formData.exam_result} onChange={handleInputChange}
-                    className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
+                  <select
+                    name="exam_result"
+                    value={formData.exam_result}
+                    onChange={handleInputChange}
+                    className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700"
+                  >
                     <option value="ge_90">&gt;= 90% Pass Rate</option>
                     <option value="ge_80">&gt;= 80% Pass Rate</option>
                     <option value="ge_70">&gt;= 70% Pass Rate</option>
@@ -416,8 +462,12 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Cycle 1 Feedback Index</label>
-                  <select name="cycle_1_feedback" value={formData.cycle_1_feedback} onChange={handleInputChange}
-                    className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
+                  <select
+                    name="cycle_1_feedback"
+                    value={formData.cycle_1_feedback}
+                    onChange={handleInputChange}
+                    className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700"
+                  >
                     <option value="excellent">Excellent</option>
                     <option value="good">Good</option>
                     <option value="satisfactory">Satisfactory</option>
@@ -426,8 +476,12 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Cycle 2 Feedback Index</label>
-                  <select name="cycle_2_feedback" value={formData.cycle_2_feedback} onChange={handleInputChange}
-                    className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700">
+                  <select
+                    name="cycle_2_feedback"
+                    value={formData.cycle_2_feedback}
+                    onChange={handleInputChange}
+                    className="w-full text-sm px-3 py-2 border border-slate-200 bg-slate-50/50 rounded-xl focus:bg-white font-medium text-slate-700"
+                  >
                     <option value="excellent">Excellent</option>
                     <option value="good">Good</option>
                     <option value="satisfactory">Satisfactory</option>
@@ -436,19 +490,29 @@ export default function StudentFeedbackModule({ records = [], isReadOnly, curren
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Additional Observations (Optional)</label>
-                  <textarea name="message" value={formData.message} onChange={handleInputChange}
+                  <textarea
+                    name="message"
+                    value={formData.message}
+                    onChange={handleInputChange}
                     className="w-full text-sm p-2 border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none h-16 resize-none"
-                    placeholder="e.g., Special remediation streams deployed for struggling candidates." />
+                    placeholder="e.g., Special remediation streams deployed for struggling candidates."
+                  />
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setIsOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition">
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={loading || (!editingId && !selectedFaculty)}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={loading || (!editingId && !selectedFaculty)}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+                >
                   {loading ? 'Saving...' : 'Save Performance Entry'}
                 </button>
               </div>

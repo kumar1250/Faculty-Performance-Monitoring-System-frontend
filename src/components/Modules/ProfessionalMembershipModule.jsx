@@ -60,7 +60,7 @@ export default function ProfessionalMembershipModule({ records = [], isReadOnly,
       }
       try {
         // Hits backend: GET /professional-membership/professional/<id>/file (No trailing slash)
-        const response = await API.get(`/professional-membership/professional/${selectedRecord.id}/file`);
+        const response = await API.get(`/professional-membership/professional/${selectedRecord.id}/file/`);
         setSecureFileUrl(response.data.certificate_url);
       } catch (err) {
         console.error("Asset pipeline failed to resolve file source:", err);
@@ -81,15 +81,19 @@ export default function ProfessionalMembershipModule({ records = [], isReadOnly,
     data.append('membership_date', formData.membership_date);
     
     if (editingId) {
-      const record = records.find(r => r.id === editingId);
-      data.append('user', record.user); // Required explicitly by backend updates schema block
-    } else {
-      if (records.length > 0 && records[0].user) {
-        data.append('user', records[0].user);
-      } else if (currentUserId) {
-        data.append('user', currentUserId);
-      }
-    }
+  const record = records.find(r => r.id === editingId);
+  // FIX: Extract numerical ID if record.user is a nested object
+  const userId = record.user && typeof record.user === 'object' ? record.user.id : record.user;
+  data.append('user', userId); 
+} else {
+  if (records.length > 0 && records[0].user) {
+    // FIX: Apply the same check here
+    const userId = records[0].user && typeof records[0].user === 'object' ? records[0].user.id : records[0].user;
+    data.append('user', userId);
+  } else if (currentUserId) {
+    data.append('user', currentUserId);
+  }
+}
 
     if (formData.certificate_file) {
       data.append('certificate_file', formData.certificate_file);
@@ -98,7 +102,7 @@ export default function ProfessionalMembershipModule({ records = [], isReadOnly,
     try {
       if (editingId) {
         // Hits PUT /professional-membership/professional/<id>/update (No trailing slash)
-        await API.put(`/professional-membership/professional/${editingId}/update`, data, {
+        await API.put(`/professional-membership/professional/${editingId}/update/`, data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
@@ -121,7 +125,7 @@ export default function ProfessionalMembershipModule({ records = [], isReadOnly,
     if (!window.confirm('Are you sure you want to remove this professional membership entry?')) return;
     try {
       // Hits DELETE /professional-membership/professional/<id>/delete (No trailing slash)
-      await API.delete(`/professional-membership/professional/${id}/delete`);
+      await API.delete(`/professional-membership/professional/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete membership entry.');

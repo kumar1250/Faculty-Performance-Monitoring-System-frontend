@@ -63,7 +63,7 @@ export default function StudentCounsellingModule({ records = [], isReadOnly, cur
     if (!window.confirm('Are you sure you want to remove this counselling entry?')) return;
     try {
       // Hits DELETE /counselling/counselling/<id>/delete[cite: 26, 27]
-      await API.delete(`/counselling/counselling/${id}/delete`);
+      await API.delete(`/counselling/counselling/${id}/delete/`);
       onRefresh();
     } catch (err) {
       alert('Failed to delete counselling entry.');

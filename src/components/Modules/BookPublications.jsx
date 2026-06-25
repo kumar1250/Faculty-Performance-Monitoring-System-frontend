@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'; // Fixed: Included useEffect here
+import { useState, useEffect } from 'react';
 import API from '../../api/axios';
 
 export default function BookPublications({ records = [], isReadOnly, onRefresh }) {
@@ -50,14 +50,14 @@ export default function BookPublications({ records = [], isReadOnly, onRefresh }
     e.stopPropagation(); // Prevent opening the detail card drawer
     setEditingId(record.id);
     setFormData({
-      book_title: record.book_title,
+      book_title: record.book_title || '',
       publisher_name: record.publisher_name || '',
-      publisher_type: record.publisher_type,
-      isbn_status: record.isbn_status,
+      publisher_type: record.publisher_type || 'national',
+      isbn_status: record.isbn_status || 'no',
       isbn_number: record.isbn_number || '',
-      author_type: record.author_type,
-      publication_date: record.publication_date,
-      certificate_file: null
+      author_type: record.author_type || 'first_author',
+      publication_date: record.publication_date || '',
+      certificate_file: null // Files cannot be populated from database values directly
     });
     setIsOpen(true);
   };
@@ -70,7 +70,6 @@ export default function BookPublications({ records = [], isReadOnly, onRefresh }
         return;
       }
       try {
-        // Hits your backend: GET /book/book-publications/<id>/file/ with Auth headers
         const response = await API.get(`/book/book-publications/${selectedRecord.id}/file/`);
         setSecureFileUrl(response.data.certificate_url);
       } catch (err) {
@@ -90,14 +89,26 @@ export default function BookPublications({ records = [], isReadOnly, onRefresh }
     data.append('publisher_name', formData.publisher_name);
     data.append('publisher_type', formData.publisher_type);
     data.append('isbn_status', formData.isbn_status);
-    data.append('isbn_number', formData.isbn_number);
+    data.append('isbn_number', formData.isbn_status === 'yes' ? formData.isbn_number : '');
     data.append('author_type', formData.author_type);
     data.append('publication_date', formData.publication_date);
     
+    // if (editingId) {
+    //   const record = records.find(r => r.id === editingId);
+    //   if (record && record.user) {
+    //     data.append('user', record.user);
+    //   }
+    // }
     if (editingId) {
-      const record = records.find(r => r.id === editingId);
-      data.append('user', record.user);
+  const record = records.find(r => r.id === editingId);
+  if (record && record.user) {
+    // If record.user is an object, grab its id. Otherwise, use it directly.
+    const userId = typeof record.user === 'object' ? record.user.id : record.user;
+    if (userId) {
+      data.append('user', userId);
     }
+  }
+}
 
     if (formData.certificate_file) {
       data.append('certificate_file', formData.certificate_file);
@@ -123,13 +134,14 @@ export default function BookPublications({ records = [], isReadOnly, onRefresh }
   };
 
   const handleDelete = async (e, id) => {
-    e.stopPropagation(); // Prevent opening the detail card drawer
+    e.stopPropagation(); // Block opening card drawer on delete interaction
     if (!window.confirm('Are you absolutely sure you want to remove this publication entry?')) return;
+    
     try {
       await API.delete(`/book/book-publications/${id}/delete/`);
       onRefresh();
     } catch (err) {
-      alert('Failed to complete entry removal request.');
+      alert(err.response?.data ? JSON.stringify(err.response.data) : 'Failed to complete entry removal request.');
     }
   };
 
