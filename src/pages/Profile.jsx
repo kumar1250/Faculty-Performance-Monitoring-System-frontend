@@ -23,7 +23,8 @@ export default function Profile() {
   const isReadOnly = !!registerNo;
   const [loading, setLoading] = useState(true);
   const [currentRegisterNo, setCurrentRegisterNo] = useState('');
-  const [currentUserId, setCurrentUserId] = useState(''); 
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [viewerRole, setViewerRole] = useState('');   // role of the logged-in viewer
   const [profile, setProfile] = useState(null); // avatar, headline, bio, department, experience
   
   const [books, setBooks] = useState([]);
@@ -53,8 +54,14 @@ export default function Profile() {
         targetUserId = detailRes.data.id;
         setCurrentRegisterNo(targetNo);
         setCurrentUserId(targetUserId);
+        setViewerRole(detailRes.data.role?.toLowerCase() || '');
       } else {
         setCurrentRegisterNo(targetNo);
+        // Still need the viewer's own role when browsing someone else's profile
+        try {
+          const meRes = await API.get('/accounts/user/details/');
+          setViewerRole(meRes.data.role?.toLowerCase() || '');
+        } catch { /* silently ignore */ }
       }
 
       // Profile header (avatar/headline/bio/department/experience) is fetched
@@ -170,7 +177,18 @@ export default function Profile() {
 
       <BookPublications records={books} isReadOnly={isReadOnly} currentRegisterNo={currentRegisterNo} onRefresh={loadProfileData} />
       <StudentProjectModule records={studentProjects} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
-      <StudentFeedbackModule records={feedbacks} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
+      {/* Student Feedback is visible to the HOD (on any profile) or to the faculty on their own profile */}
+      {/* HOD: full edit access. Faculty on own profile: view-only. Others: hidden. */}
+      {(viewerRole === 'hod' || !isReadOnly) && (
+        <StudentFeedbackModule
+          records={feedbacks}
+          isReadOnly={viewerRole !== 'hod'}
+          currentUserId={currentUserId}
+          onRefresh={loadProfileData}
+          facultyName={profile?.username?.username || currentRegisterNo}
+          viewerRole={viewerRole}
+        />
+      )}
       <StudentCounsellingModule records={counsellingRecords} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
       <ChairingSessionModule records={chairedSessions} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
       <ResearchGuidanceModule records={guidanceRecords} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
