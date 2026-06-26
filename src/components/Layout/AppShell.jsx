@@ -661,12 +661,6 @@ function RankingsPanel({ user }) {
 }
 
 // ─── Navbar Search Bar ────────────────────────────────────────────────────────
-// Uses the real backend endpoints:
-//   GET /summary/faculty-summary/search/?q=<text>         -> live suggestions
-//   GET /summary/faculty-summary/dashboard/?register_no=  -> full detail + rank
-// HOD department-scoping is enforced server-side (HOD only sees their own
-// department's results; principal/dean see everyone) — no client-side
-// roster fetching or filtering needed.
 function FacultySearch({ isPrivileged }) {
   const [query, setQuery]             = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -678,9 +672,8 @@ function FacultySearch({ isPrivileged }) {
   const inputRef                      = useRef(null);
   const dropdownRef                   = useRef(null);
   const debounceRef                   = useRef(null);
-  const requestSeq                    = useRef(0); // guards against out-of-order responses
+  const requestSeq                    = useRef(0);
 
-  // Close on outside click
   useEffect(() => {
     function handler(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target) &&
@@ -708,7 +701,7 @@ function FacultySearch({ isPrivileged }) {
       const res = await API.get('/summary/faculty-summary/search/', {
         params: { q: term },
       });
-      if (seq !== requestSeq.current) return; // a newer keystroke already fired
+      if (seq !== requestSeq.current) return;
       setSuggestions(res.data?.results || []);
       setShowDropdown(true);
     } catch {
@@ -748,7 +741,6 @@ function FacultySearch({ isPrivileged }) {
 
   return (
     <>
-      {/* Loading overlay */}
       {loadingDash && (
         <div className="fixed inset-0 z-[65] bg-black/30 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl flex flex-col items-center gap-3">
@@ -758,10 +750,8 @@ function FacultySearch({ isPrivileged }) {
         </div>
       )}
 
-      {/* Faculty Dashboard Modal */}
       {dashData && <FacultyDashboardModal data={dashData} onClose={() => { setDashData(null); setQuery(''); }} />}
 
-      {/* Search widget */}
       <div className="relative" ref={dropdownRef}>
         <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-white border border-slate-200 hover:border-blue-300 focus-within:bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 rounded-xl px-3 py-1.5 transition-all w-56">
           <span className="text-slate-400 text-sm flex-shrink-0">
@@ -784,7 +774,6 @@ function FacultySearch({ isPrivileged }) {
           )}
         </div>
 
-        {/* Dropdown */}
         {showDropdown && (
           <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
             <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
@@ -829,9 +818,15 @@ function FacultySearch({ isPrivileged }) {
 export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser]           = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [myPhotoUrl, setMyPhotoUrl] = useState(null);
+  const [user, setUser]               = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [myPhotoUrl, setMyPhotoUrl]   = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // ← NEW
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     async function fetchUser() {
@@ -893,14 +888,31 @@ export default function AppShell() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
 
-          {/* ── Left: Logo + Nav ── */}
-          <div className="flex items-center gap-5 flex-shrink-0">
+          {/* ── Left: Hamburger + Logo + Desktop Nav ── */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+
+            {/* Hamburger button — mobile only */}
+            <button
+              onClick={() => setMobileMenuOpen(o => !o)}
+              className="sm:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-all active:scale-95"
+              aria-label="Toggle menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                {mobileMenuOpen
+                  ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                }
+              </svg>
+            </button>
+
+            {/* Logo */}
             <Link to="/dashboard" className="flex items-center gap-2 group">
               <div className="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-sm font-black tracking-tight group-hover:bg-blue-700 transition">FP</div>
               <span className="font-black text-slate-900 tracking-tight text-base hidden sm:inline">PerformanceHub</span>
             </Link>
 
-            <nav className="flex items-center gap-1">
+            {/* Desktop nav — hidden on mobile */}
+            <nav className="hidden sm:flex items-center gap-1">
               {navLink('/dashboard', 'Dashboard', true)}
               {navLink('/profile', 'My Profile')}
 
@@ -943,15 +955,15 @@ export default function AppShell() {
             </nav>
           </div>
 
-          {/* ── Centre: Search ── */}
-          <div className="flex-1 flex justify-center max-w-xs">
-            {/* FIX: pass isPrivileged={canSearch} instead of user={user} */}
+          {/* ── Centre: Search — hidden on mobile ── */}
+          <div className="hidden sm:flex flex-1 justify-center max-w-xs">
             <FacultySearch isPrivileged={canSearch} />
           </div>
 
-          {/* ── Right: Rankings + user info + sign out ── */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {/* ── Right: Rankings + user info + avatar + sign out ── */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
 
+            <RankingsPanel user={user} />
 
             <div className="text-right hidden md:block">
               <p className="text-xs font-bold text-slate-900 capitalize">{user?.username || 'Faculty'}</p>
@@ -968,8 +980,93 @@ export default function AppShell() {
               Sign Out
             </button>
           </div>
-
         </div>
+
+        {/* ── Mobile Dropdown Menu ── */}
+        {mobileMenuOpen && (
+          <div className="sm:hidden border-t border-slate-100 bg-white px-4 py-3 flex flex-col gap-1 shadow-lg">
+
+            {/* Mobile search — only for privileged roles */}
+            {canSearch && (
+              <div className="mb-2">
+                <FacultySearch isPrivileged={canSearch} />
+              </div>
+            )}
+
+            {/* User info */}
+            <div className="flex items-center gap-3 px-2 py-2 mb-1 border-b border-slate-100">
+              <Link to="/account" onClick={() => setMobileMenuOpen(false)}>
+                <Avatar name={user?.username || 'Faculty'} seed={user?.register_no} photoUrl={myPhotoUrl} size="w-9 h-9" textSize="text-sm" />
+              </Link>
+              <div>
+                <p className="text-sm font-bold text-slate-900 capitalize">{user?.username || 'Faculty'}</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{user?.role?.replace(/_/g, ' ')}</p>
+              </div>
+            </div>
+
+            {/* Nav links */}
+            <Link
+              to="/dashboard"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                location.pathname === '/dashboard' || location.pathname === '/'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-slate-700 hover:bg-slate-50'
+              }`}>
+              📊 Dashboard
+            </Link>
+
+            <Link
+              to="/profile"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                location.pathname === '/profile' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+              }`}>
+              👤 My Profile
+            </Link>
+
+            {canSeeLeaderboard && (
+              <Link
+                to="/leaderboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  location.pathname === '/leaderboard' ? 'bg-amber-50 text-amber-800' : 'text-slate-700 hover:bg-amber-50'
+                }`}>
+                🏆 Leaderboard
+              </Link>
+            )}
+
+            {canSeeApprovalInbox && (
+              <Link
+                to="/requests"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  location.pathname === '/requests' ? 'bg-blue-600 text-white' : 'text-blue-600 hover:bg-blue-50'
+                }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                Approval Inbox
+              </Link>
+            )}
+
+            {canSeeDeptOverview && (
+              <Link
+                to="/dept-overview"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  location.pathname === '/dept-overview' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-blue-50'
+                }`}>
+                🏛️ Departments
+              </Link>
+            )}
+
+            <Link
+              to="/account"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all">
+              ⚙️ Account Settings
+            </Link>
+          </div>
+        )}
       </header>
 
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
