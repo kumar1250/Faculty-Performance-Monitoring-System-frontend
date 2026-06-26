@@ -65,7 +65,7 @@ function rerank(rows) {
 }
 
 function deptLabel(code) {
-  if (code === 'UNASSIGNED') return 'Unassigned';
+  if (code === 'UNASSIGNED') return 'College Department';
   return DEPARTMENT_OPTIONS.find(d => d.value === code)?.label || code || 'Unknown';
 }
 
