@@ -48,19 +48,25 @@ export default function Profile() {
     try {
       let targetNo = registerNo;
       let targetUserId = null;
+      let myRole = '';
       if (!targetNo) {
         const detailRes = await API.get('/accounts/user/details/');
         targetNo = detailRes.data.register_no;
         targetUserId = detailRes.data.id;
+        myRole = detailRes.data.role?.toLowerCase() || '';
         setCurrentRegisterNo(targetNo);
         setCurrentUserId(targetUserId);
-        setViewerRole(detailRes.data.role?.toLowerCase() || '');
+        setViewerRole(myRole);
       } else {
         setCurrentRegisterNo(targetNo);
-        // Still need the viewer's own role when browsing someone else's profile
+        // Still need the viewer's own id/role when browsing someone else's
+        // profile — canModifyRecord() in StudentFeedbackModule compares
+        // record.created_by against this viewer's own id.
         try {
           const meRes = await API.get('/accounts/user/details/');
-          setViewerRole(meRes.data.role?.toLowerCase() || '');
+          myRole = meRes.data.role?.toLowerCase() || '';
+          setViewerRole(myRole);
+          setCurrentUserId(meRes.data.id);
         } catch { /* silently ignore */ }
       }
 
@@ -77,6 +83,14 @@ export default function Profile() {
         .catch(() => setProfile(null));
 
       // Final Path Alignment with Django Routers (Removing trailing slashes to match regex)
+      // Student feedback: HOD viewing their OWN profile sees the entries
+      // *they personally uploaded* (across every faculty member) instead
+      // of records scoped to their own register number.
+      const isOwnProfile = !isReadOnly;
+      const feedbackRequest = (isOwnProfile && myRole === 'hod')
+        ? API.get('/feedback/student-feedback/my-uploads/').catch(() => ({ data: [] }))
+        : API.get(`/feedback/student-feedback/user/${targetNo}`).catch(() => ({ data: [] }));
+
       const [
         booksRes, coursesRes, pubRes, consRes, 
         fdpRes, fdpOrgRes, fundedRes, journalRes, 
@@ -98,7 +112,7 @@ export default function Profile() {
         API.get(`/session/chairing/usersessions/${targetNo}`).catch(() => ({ data: [] })),
         API.get(`/counselling/counselling/usercontributions/${targetNo}`).catch(() => ({ data: [] })),
         API.get(`/project/studentproject/user/${targetNo}`).catch(() => ({ data: [] })),
-        API.get(`/feedback/student-feedback/user/${targetNo}`).catch(() => ({ data: [] }))
+        feedbackRequest
       ]);
 
       setBooks(booksRes.data || []);
@@ -177,9 +191,9 @@ export default function Profile() {
 
       <BookPublications records={books} isReadOnly={isReadOnly} currentRegisterNo={currentRegisterNo} onRefresh={loadProfileData} />
       <StudentProjectModule records={studentProjects} isReadOnly={isReadOnly} currentUserId={currentUserId} onRefresh={loadProfileData} />
-      {/* Student Feedback is visible to the HOD (on any profile) or to the faculty on their own profile */}
-      {/* HOD: full edit access. Faculty on own profile: view-only. Others: hidden. */}
-      {(viewerRole === 'hod' || !isReadOnly) && (
+      {/* Student Feedback is visible to the HOD (on any profile) or to the faculty on their own profile. */}
+      {/* HOD: full edit access. Faculty on own profile: view-only. Principal/Dean: hidden entirely. Others: hidden. */}
+      {(viewerRole === 'hod' || (!isReadOnly && !['principal', 'dean'].includes(viewerRole))) && (
         <StudentFeedbackModule
           records={feedbacks}
           isReadOnly={viewerRole !== 'hod'}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import API from '../../api/axios';
+import { filterFacultyByRole } from '../../utils/facultyFilters';
 
 // ── Faculty picker (register-no / name search) ─────────────────────────────
 function FacultyPicker({ value, onChange }) {
@@ -13,12 +14,17 @@ function FacultyPicker({ value, onChange }) {
   const ensureRoster = async () => {
     if (rosterLoaded) return;
     try {
-      const res = await API.get('/accounts/user/list/');
+      const [listRes, meRes] = await Promise.all([
+        API.get('/accounts/user/list/'),
+        API.get('/accounts/user/details/').catch(() => ({ data: null })),
+      ]);
       const ASSIGNABLE_ROLES = ['faculty', 'department_incharge', 'committee_coordinator'];
-      const faculty = (res.data || []).filter(u =>
+      const faculty = (listRes.data || []).filter(u =>
         ASSIGNABLE_ROLES.includes((u.role || '').toLowerCase())
       );
-      setRoster(faculty);
+      // HOD only sees faculty from their own department; dean/principal see everyone.
+      const scoped = filterFacultyByRole(faculty, meRes.data);
+      setRoster(scoped);
       setRosterLoaded(true);
     } catch { /* silent */ }
   };
@@ -127,9 +133,16 @@ export default function StudentFeedbackModule({
   const [loading, setLoading]               = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
 
-  // Editing/deleting allowed when viewing own profile OR when viewer is HOD/Dean/Principal
+  // The "+ Log" button shows for HOD/Dean/Principal/department_incharge
+  // viewing any profile, or for the faculty viewing their own profile.
   const PRIVILEGED_ROLES = ['hod', 'dean', 'principal', 'department_incharge'];
-  const canModify = !isReadOnly || PRIVILEGED_ROLES.includes(viewerRole);
+  const canCreate = !isReadOnly || PRIVILEGED_ROLES.includes(viewerRole);
+
+  // Edit/delete on a SPECIFIC record is only allowed for whoever actually
+  // uploaded that record (record.created_by) — a HOD can no longer edit
+  // every entry on a faculty's profile, only the ones they personally logged.
+  const canModifyRecord = (record) =>
+    String(record.created_by) === String(currentUserId);
 
   // { userId, registerNo, username }
   const [selectedFaculty, setSelectedFaculty] = useState(null);
@@ -252,15 +265,19 @@ export default function StudentFeedbackModule({
           <p className="text-xs text-slate-500 mt-0.5">Track intermediate feedback metric indexes and exam passing distributions.</p>
           {PRIVILEGED_ROLES.includes(viewerRole) && facultyName && (
             <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 rounded-lg">
-              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Faculty</span>
-              <span className="text-xs font-bold text-indigo-700 capitalize">{facultyName}</span>
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">
+                {!isReadOnly ? 'Showing' : 'Faculty'}
+              </span>
+              <span className="text-xs font-bold text-indigo-700 capitalize">
+                {!isReadOnly ? 'Entries you uploaded' : facultyName}
+              </span>
               <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded-md uppercase tracking-wide">
                 {viewerRole.toUpperCase()} View
               </span>
             </div>
           )}
         </div>
-        {canModify && (
+        {canCreate && (
           <button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex-shrink-0 ml-4">
             + Log Course Performance
           </button>
@@ -302,7 +319,7 @@ export default function StudentFeedbackModule({
                   </span>
                   <span className="text-xs font-bold text-blue-600">+{record.points} Points</span>
                 </div>
-                {canModify && (
+                {canModifyRecord(record) && (
                   <div className="flex items-center gap-1">
                     <button
                       onClick={(e) => openEditModal(e, record)}
