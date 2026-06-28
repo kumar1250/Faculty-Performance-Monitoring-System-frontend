@@ -248,7 +248,7 @@ function ModuleDetailModal({ module, registerNo, onClose }) {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 border-b border-slate-100">
           {[
             { l: 'Submitted', v: module.total,    c: '#3b82f6' },
             { l: 'Approved',  v: module.approved, c: '#10b981' },
@@ -521,7 +521,7 @@ function FacultyDirectoryPanel({ isVisible }) {
               const deptLabel = DEPARTMENT_OPTIONS.find(d => d.value === u.department)?.label || u.department || '—';
               const points = pointsMap[u.register_no];
               return (
-                <div key={u.id || u.register_no} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors">
+                <div key={u.id || u.register_no} className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-5 py-3 hover:bg-slate-50 transition-colors">
                   <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
                     {(u.username?.[0] || '?').toUpperCase()}
                   </div>
@@ -562,6 +562,7 @@ export default function Dashboard() {
   const [detailModule, setDetail] = useState(null);
   const [search, setSearch]       = useState('');
   const [sortBy, setSortBy]       = useState('points');
+  const [showImagePopup, setShowImagePopup] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -667,7 +668,10 @@ export default function Dashboard() {
           <div className="relative flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="flex items-start gap-4">
               {/* Avatar */}
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center text-white text-2xl font-black overflow-hidden flex-shrink-0">
+              <div
+                onClick={() => profile?.profile_image_url && setShowImagePopup(true)}
+                className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center text-white text-2xl font-black overflow-hidden flex-shrink-0 ${profile?.profile_image_url ? 'cursor-pointer hover:opacity-90 active:scale-95 transition' : ''}`}
+              >
                 {profile?.profile_image_url ? (
                   <img src={profile.profile_image_url} alt={user?.username || 'Profile'}
                     className="w-full h-full object-cover" />
@@ -868,11 +872,11 @@ export default function Dashboard() {
                 {modules.length} modules · Click <strong>View Details</strong> to inspect individual records
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-initial">
                 <input type="text" placeholder="Search modules…" value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-slate-50 w-44" />
+                  className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-slate-50 w-full sm:w-44" />
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
               </div>
               <select value={sortBy} onChange={e => setSortBy(e.target.value)}
@@ -886,7 +890,7 @@ export default function Dashboard() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left min-w-[700px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">#</th>
@@ -1002,6 +1006,28 @@ export default function Dashboard() {
         </p>
 
       </div>
+
+      {/* Profile image popup / lightbox — mobile friendly */}
+      {showImagePopup && profile?.profile_image_url && (
+        <div
+          onClick={() => setShowImagePopup(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[100]"
+        >
+          <button
+            onClick={() => setShowImagePopup(false)}
+            className="absolute top-4 right-4 sm:top-5 sm:right-5 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white/90 hover:text-white text-xl leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+          <img
+            src={profile.profile_image_url}
+            alt={user?.username || 'Profile'}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[92vw] max-h-[80vh] rounded-2xl shadow-2xl object-contain"
+          />
+        </div>
+      )}
     </>
   );
 }

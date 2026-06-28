@@ -6,6 +6,7 @@ import { getMeta } from './moduleMeta';
 
 export default function FacultyDetailModal({ data, onClose }) {
   const [activeModule, setActiveModule] = useState(null);
+  const [showImagePopup, setShowImagePopup] = useState(false);
 
   if (!data) return null;
 
@@ -34,7 +35,8 @@ export default function FacultyDetailModal({ data, onClose }) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
                 <Avatar name={data.username} seed={data.register_no} photoUrl={data.profile_image_url}
-                  size="w-14 h-14 mt-0.5" textSize="text-lg" />
+                  size="w-14 h-14 mt-0.5" textSize="text-lg"
+                  onClick={data.profile_image_url ? () => setShowImagePopup(true) : undefined} />
                 <div>
                   <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-0.5">Faculty Performance Dashboard</p>
                   <h2 className="text-2xl font-black capitalize">{data.username}</h2>
@@ -87,7 +89,7 @@ export default function FacultyDetailModal({ data, onClose }) {
           </div>
 
           {/* ── Quick Stats ── */}
-          <div className="grid grid-cols-4 divide-x divide-slate-200 border-b border-slate-200 bg-white">
+          <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200 bg-white">
             {[
               { l: 'Submitted', v: totalSubmitted, c: '#3b82f6' },
               { l: 'Approved',  v: totalApproved,  c: '#10b981' },
@@ -109,8 +111,8 @@ export default function FacultyDetailModal({ data, onClose }) {
                 Click "View Details" to expand records
               </span>
             </h3>
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full text-left">
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm overflow-x-auto">
+              <table className="w-full text-left min-w-[640px]">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-wider">#</th>
@@ -189,6 +191,28 @@ export default function FacultyDetailModal({ data, onClose }) {
           </div>
         </div>
       </div>
+
+      {/* Profile image popup / lightbox — mobile friendly */}
+      {showImagePopup && data.profile_image_url && (
+        <div
+          onClick={() => setShowImagePopup(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[100]"
+        >
+          <button
+            onClick={() => setShowImagePopup(false)}
+            className="absolute top-4 right-4 sm:top-5 sm:right-5 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white/90 hover:text-white text-xl leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+          <img
+            src={data.profile_image_url}
+            alt={data.username || 'Profile'}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[92vw] max-h-[80vh] rounded-2xl shadow-2xl object-contain"
+          />
+        </div>
+      )}
     </>
   );
 }

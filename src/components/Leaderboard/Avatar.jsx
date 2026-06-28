@@ -40,9 +40,10 @@ function getInitials(name) {
 
 // seed: stable & unique per person (register_no is ideal, falls back to name)
 // photoUrl: presigned S3 url from the backend's profile_image_url field
-export default function Avatar({ name, seed, photoUrl, size = 'w-10 h-10', textSize = 'text-sm' }) {
+export default function Avatar({ name, seed, photoUrl, size = 'w-10 h-10', textSize = 'text-sm', onClick }) {
   const [imgFailed, setImgFailed] = useState(false);
   const [from, to] = getAvatarColors(seed || name || '?');
+  const clickable = typeof onClick === 'function';
 
   // Reset imgFailed if the photoUrl changes
   useEffect(() => {
@@ -56,7 +57,8 @@ export default function Avatar({ name, seed, photoUrl, size = 'w-10 h-10', textS
           alt={name || 'Profile'}
           // If it fails, mark as failed
           onError={() => setImgFailed(true)}
-          className={`${size} rounded-full object-cover flex-shrink-0 bg-slate-100`}
+          onClick={clickable ? onClick : undefined}
+          className={`${size} rounded-full object-cover flex-shrink-0 bg-slate-100 ${clickable ? 'cursor-pointer hover:opacity-90 active:scale-95 transition' : ''}`}
         />
       );
     }
@@ -64,7 +66,8 @@ export default function Avatar({ name, seed, photoUrl, size = 'w-10 h-10', textS
     // Fallback to initials
     return (
       <div
-        className={`${size} rounded-full flex items-center justify-center text-white ${textSize} font-black flex-shrink-0`}
+        onClick={clickable ? onClick : undefined}
+        className={`${size} rounded-full flex items-center justify-center text-white ${textSize} font-black flex-shrink-0 ${clickable ? 'cursor-pointer hover:opacity-90 active:scale-95 transition' : ''}`}
         style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}
       >
         {getInitials(name)}

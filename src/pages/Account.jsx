@@ -14,6 +14,7 @@ export default function Account() {
   const [userDetails, setUserDetails] = useState(null); // /accounts/user/details/
   const [imageFile, setImageFile]   = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [showImagePopup, setShowImagePopup] = useState(false);
 
   const [form, setForm] = useState({
     headline: '',
@@ -187,7 +188,10 @@ export default function Account() {
         <div className="relative flex flex-col sm:flex-row gap-5 sm:items-center">
           {/* Avatar */}
           <div className="flex flex-col items-center gap-2 flex-shrink-0">
-            <div className="w-20 h-20 rounded-2xl bg-white/15 backdrop-blur border-2 border-white/25 flex items-center justify-center text-white text-2xl font-black overflow-hidden">
+            <div
+              onClick={() => avatarUrl && setShowImagePopup(true)}
+              className={`w-20 h-20 rounded-2xl bg-white/15 backdrop-blur border-2 border-white/25 flex items-center justify-center text-white text-2xl font-black overflow-hidden ${avatarUrl ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
+            >
               {avatarUrl
                 ? <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
                 : initial}
@@ -357,6 +361,28 @@ export default function Account() {
           </form>
         )}
       </div>
+
+      {/* Profile image popup / lightbox */}
+      {showImagePopup && avatarUrl && (
+        <div
+          onClick={() => setShowImagePopup(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+        >
+          <button
+            onClick={() => setShowImagePopup(false)}
+            className="absolute top-5 right-5 text-white/80 hover:text-white text-3xl leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+          <img
+            src={avatarUrl}
+            alt="Profile"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[90vw] max-h-[85vh] rounded-2xl shadow-2xl object-contain"
+          />
+        </div>
+      )}
     </div>
   );
 }
