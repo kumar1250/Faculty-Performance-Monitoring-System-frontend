@@ -1,7 +1,11 @@
 import { getMeta, humanize, formatFieldValue } from './moduleMeta';
 import Pill from './Pill';
+import { DEPARTMENT_OPTIONS } from '../../utils/facultyFilters';
 
-export default function ModuleDrawer({ module, onClose }) {
+export default function ModuleDrawer({ module, department, onClose }) {
+  const deptLabel = department
+    ? (DEPARTMENT_OPTIONS.find(d => d.value === department)?.label || department)
+    : null;
   const meta = getMeta(module.module);
   const records = module.records || [];
   const skipFields = new Set(['user', 'faculty', 'password']);
@@ -21,7 +25,14 @@ export default function ModuleDrawer({ module, onClose }) {
           <div className="flex items-center gap-3">
             <span className="text-3xl">{meta.icon}</span>
             <div>
-              <h2 className="text-lg font-black text-slate-900">{module.module}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-black text-slate-900">{module.module}</h2>
+                {deptLabel && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-white/70 border border-slate-300 text-slate-600 uppercase tracking-wider">
+                    {deptLabel}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 font-semibold">
                 {module.total} submitted · {module.approved} approved · {module.pending} pending · {module.rejected} rejected · <span className="font-black" style={{ color: meta.color }}>{module.points} pts</span>
               </p>

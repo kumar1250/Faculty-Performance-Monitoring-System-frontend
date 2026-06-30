@@ -105,14 +105,14 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
   const topThree = board.filter(r => r.rank <= 3).slice(0, 3);
   const rest     = board.filter(r => !topThree.includes(r));
 
-  const openProfile = useCallback(async (registerNo) => {
+  const openProfile = useCallback(async (registerNo, knownDepartment) => {
     setDashError('');
     setLoadingDash(true);
     try {
       const res = await API.get(
         `/summary/faculty-summary/dashboard/?register_no=${registerNo}&role=all`
       );
-      setDashData(res.data);
+      setDashData({ ...res.data, department: res.data.department ?? knownDepartment });
     } catch {
       setDashError("Could not load that faculty member's profile.");
     } finally {
@@ -167,7 +167,7 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
               Department Leaderboard · {board.length} faculty members
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex gap-3">
             <div className="bg-white/15 backdrop-blur border border-white/20 rounded-xl px-4 py-3 text-center min-w-[80px]">
               <p className="text-2xl font-black">{board.length}</p>
               <p className="text-[10px] font-bold text-white/60 uppercase tracking-wider">Faculty</p>
@@ -196,7 +196,7 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
               {topThree.map(row => (
                 <button
                   key={row.user_id || row.register_no}
-                  onClick={() => openProfile(row.register_no)}
+                  onClick={() => openProfile(row.register_no, row.department)}
                   className="bg-white border border-slate-200 hover:border-amber-300 rounded-2xl p-5 text-center shadow-sm hover:shadow-md transition-all group"
                 >
                   <span className="text-4xl block mb-2">{MEDAL[row.rank]}</span>
@@ -236,10 +236,10 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
                 {rest.map(row => (
                   <button
                     key={row.user_id || row.register_no}
-                    onClick={() => openProfile(row.register_no)}
-                    className="w-full flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3.5 hover:bg-blue-50/40 transition text-left group"
+                    onClick={() => openProfile(row.register_no, row.department)}
+                    className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/40 transition text-left group"
                   >
-                    <span className="w-6 sm:w-10 text-center text-sm font-black text-slate-400 flex-shrink-0">
+                    <span className="w-10 text-center text-sm font-black text-slate-400 flex-shrink-0">
                       #{row.rank}
                     </span>
                     <Avatar
@@ -253,7 +253,7 @@ function DepartmentLeaderboard({ dept, allFaculty, onBack }) {
                       <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">
                         {row.username}
                       </p>
-                      <p className="text-[11px] font-semibold text-slate-400 truncate">
+                      <p className="text-[11px] font-semibold text-slate-400">
                         {row.register_no} · <span className="uppercase">{row.role?.replace(/_/g, ' ')}</span>
                       </p>
                     </div>
@@ -288,7 +288,7 @@ function DepartmentTable({ departments, maxPoints, onViewDept }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left min-w-[640px]">
+        <table className="w-full text-left">
           <thead>
             <tr className="border-b border-slate-100">
               {['#', 'Department', 'Faculty', 'Total Pts', 'Avg Pts / Faculty', 'Progress', 'Action'].map(h => (
@@ -577,7 +577,7 @@ export default function PrincipalDeanDashboard() {
             return (
               <div
                 key={row.user_id || row.register_no}
-                className="flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3.5"
+                className="flex items-center gap-4 px-5 py-3.5"
               >
                 <span className="w-8 text-center text-sm font-black text-slate-300 flex-shrink-0">
                   {row.rank <= 3 ? MEDAL[row.rank] : `#${row.rank}`}

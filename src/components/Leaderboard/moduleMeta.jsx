@@ -1,5 +1,6 @@
 import Pill from './Pill';
 import SecureFilePreview from './SecureFilePreview';
+import { DEPARTMENT_OPTIONS } from '../../utils/facultyFilters';
 
 export const MODULE_META = {
   'Book Publications':                    { icon: '📚', color: '#6366f1', bg: '#eef2ff' },
@@ -38,6 +39,10 @@ export function formatFieldValue(val, key, ctx) {
   if (typeof val === 'boolean') return val ? '✅ Yes' : '❌ No';
   if (typeof val === 'string' && val.startsWith('http')) {
     return <SecureFilePreview moduleLabel={ctx?.moduleLabel} recordId={ctx?.recordId} rawUrl={val} />;
+  }
+  if (key === 'department') {
+    const label = DEPARTMENT_OPTIONS.find(d => d.value === val)?.label || val;
+    return <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wide">{label}</span>;
   }
   if (key === 'points') return <span className="font-black text-blue-700">{val}</span>;
   return <span className="text-slate-700 text-sm">{String(val)}</span>;

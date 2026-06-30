@@ -57,13 +57,13 @@ export default function Leaderboard() {
     return () => { cancelled = true; };
   }, []);
 
-  const openProfile = async (registerNo) => {
+  const openProfile = async (registerNo, knownDepartment) => {
     setDashError('');
     setLoadingDash(true);
     try {
       // Full module breakdown + profile photo + live rank for this one person.
       const res = await API.get(`/summary/faculty-summary/dashboard/?register_no=${registerNo}&role=all`);
-      setDashData(res.data);
+      setDashData({ ...res.data, department: res.data.department ?? knownDepartment });
     } catch {
       setDashError("Could not load that faculty member's profile.");
     } finally {
@@ -75,7 +75,7 @@ export default function Leaderboard() {
   const rest = board.filter(row => !topThree.includes(row));
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto antialiased font-sans p-4 sm:p-6">
+    <div className="space-y-6 max-w-5xl mx-auto antialiased font-sans p-6">
 
       {/* Loading overlay while opening a profile */}
       {loadingDash && (
@@ -97,8 +97,8 @@ export default function Leaderboard() {
       )}
 
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-        <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">🏆 Faculty Leaderboard</h2>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+        <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">🏆 Faculty Leaderboard</h2>
         <p className="text-slate-500 text-sm mt-0.5">
           Everyone ranked by total approved points, highest first. Click anyone to see their full profile and activity breakdown.
         </p>
@@ -124,14 +124,14 @@ export default function Leaderboard() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {topThree.map(row => (
                 <button key={row.user_id}
-                  onClick={() => openProfile(row.register_no)}
+                  onClick={() => openProfile(row.register_no, row.department)}
                   className="bg-white border border-slate-200 hover:border-amber-300 rounded-2xl p-5 text-center shadow-sm hover:shadow-md transition-all">
                   <span className="text-4xl block mb-2">{MEDAL[row.rank]}</span>
                   <Avatar name={row.username} seed={row.register_no} photoUrl={row.profile_image_url}
                     size="w-16 h-16 mx-auto" textSize="text-lg" />
                   <p className="text-sm font-black text-slate-900 capitalize mt-2 truncate">{row.username}</p>
                   <p className="text-[11px] font-semibold text-slate-400">{row.register_no}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">{row.role?.replace(/_/g, ' ')}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">{row.role?.replace(/_/g, ' ')}{row.department && ` · ${row.department}`}</p>
                   <p className="text-2xl font-black text-amber-600 mt-2">{row.total_points}<span className="text-xs font-bold text-slate-400"> pts</span></p>
                 </button>
               ))}
@@ -146,18 +146,18 @@ export default function Leaderboard() {
             <div className="divide-y divide-slate-50">
               {rest.map(row => (
                 <button key={row.user_id}
-                  onClick={() => openProfile(row.register_no)}
-                  className="w-full flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3.5 hover:bg-blue-50/40 transition text-left group">
-                  <span className="w-6 sm:w-10 text-center text-sm font-black text-slate-400 flex-shrink-0">
+                  onClick={() => openProfile(row.register_no, row.department)}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/40 transition text-left group">
+                  <span className="w-10 text-center text-sm font-black text-slate-400 flex-shrink-0">
                     #{row.rank}
                   </span>
                   <Avatar name={row.username} seed={row.register_no} photoUrl={row.profile_image_url}
                     size="w-9 h-9" textSize="text-xs" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 capitalize truncate group-hover:text-blue-700 transition">{row.username}</p>
-                    <p className="text-[11px] font-semibold text-slate-400 truncate">
+                    <p className="text-[11px] font-semibold text-slate-400">
                       {row.register_no} · <span className="uppercase">{row.role?.replace(/_/g, ' ')}</span>
-                      <span className="hidden sm:inline"> · {row.email}</span>
+                      {row.department && <span className="uppercase"> · {row.department}</span>} · {row.email}
                     </p>
                   </div>
                   <span className="text-sm font-black text-blue-700 flex-shrink-0">
